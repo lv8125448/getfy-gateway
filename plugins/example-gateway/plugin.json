@@ -1,0 +1,13 @@
+{
+    "slug": "example-gateway",
+    "name": "Example Gateway",
+    "version": "1.0.0",
+    "description": "Plugin de exemplo que registra um gateway de pagamento. Aparece na aba Gateways após ativar.",
+    "author": "Plataforma",
+    "type": "gateway",
+    "banner": "banner.png",
+    "category": "gateway",
+    "menu": [],
+    "routes": null,
+    "migrations": null
+}

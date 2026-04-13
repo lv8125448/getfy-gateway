@@ -1,0 +1,30 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Raiz (/) – redireciona diretamente para /login (evita 404)
+    RewriteRule ^/?$ /login [R=302,L]
+
+    # /storage/* – servir de public/storage/ (link simbólico do Laravel)
+    RewriteRule ^storage/(.*)$ public/storage/$1 [L]
+
+    # /build/* – servir de public/build/ (assets Vite)
+    RewriteRule ^build/(.*)$ public/build/$1 [L]
+
+    # /images/* – servir de public/images/
+    RewriteRule ^images/(.*)$ public/images/$1 [L]
+
+    # PWA: garantir arquivos estáticos públicos quando document root não aponta para /public
+    RewriteRule ^manifest\.json$ public/manifest.json [L]
+    RewriteRule ^painel-sw\.js$ public/painel-sw.js [L]
+    RewriteRule ^icons/(.*)$ public/icons/$1 [L]
+
+    # Arquivos/diretórios existentes – não reescrever
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Demais requisições – encaminhar para o Laravel
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/index.php [L,QSA]
+</IfModule>

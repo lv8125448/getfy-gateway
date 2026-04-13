@@ -1,0 +1,15 @@
+name: Vulnerabilidade de segurança
+description: Relatar problema de segurança
+title: "[SECURITY]: "
+labels: ["security"]
+
+body:
+  - type: textarea
+    id: vulnerability
+    attributes:
+      label: Descrição da vulnerabilidade
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Como reproduzir

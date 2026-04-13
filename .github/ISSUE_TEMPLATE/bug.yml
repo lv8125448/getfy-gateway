@@ -1,0 +1,24 @@
+name: Bug
+description: Relatar um problema ou erro no sistema
+title: "[BUG]: "
+labels: ["bug"]
+
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Descrição do problema
+      description: Explique claramente o que aconteceu
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      description: Passo a passo para reproduzir o erro
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado

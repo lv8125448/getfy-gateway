@@ -1,0 +1,22 @@
+name: Sugestão de funcionalidade
+description: Sugerir uma nova funcionalidade
+title: "[FEATURE]: "
+labels: ["feature"]
+
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Qual problema essa funcionalidade resolveria?
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solução proposta
+      description: Como você imagina essa funcionalidade funcionando?
+
+  - type: textarea
+    id: benefits
+    attributes:
+      label: Benefícios

@@ -1,0 +1,108 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+/* Dark mode via .dark class on html */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* Sombras leves para layout */
+    --shadow-theme-xs: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
+    --shadow-theme-sm: 0px 1px 3px 0px rgba(0, 0, 0, 0.08), 0px 1px 2px 0px rgba(0, 0, 0, 0.04);
+
+    /* Acente neutro para item ativo (zinc-600 / zinc-400 dark) */
+    --color-accent: #52525b;
+    --color-accent-hover: #3f3f46;
+}
+
+@layer base {
+    :root {
+        --color-primary: #0ea5e9;
+    }
+    body {
+        @apply bg-zinc-50 text-zinc-900 antialiased;
+    }
+    .dark body {
+        @apply bg-zinc-950 text-zinc-100;
+    }
+    /* Member Builder em tela cheia: #app não deve capturar cliques para o overlay receber */
+    body.member-builder-active #app {
+        pointer-events: none;
+    }
+}
+
+/* Utilities para sidebar */
+@utility menu-item {
+    @apply relative flex items-center w-full gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors;
+}
+
+@utility menu-item-active {
+    @apply relative bg-zinc-200 font-semibold text-zinc-900 dark:bg-zinc-800 dark:text-white before:absolute before:bottom-0 before:left-[-0.75rem] before:top-0 before:w-1.5 before:rounded-r-full before:content-[''] before:bg-[var(--color-primary)];
+}
+
+@utility menu-item-inactive {
+    @apply text-zinc-600 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800/80 dark:hover:text-zinc-200;
+}
+
+@utility menu-item-icon-active {
+    @apply text-zinc-700 dark:text-zinc-200;
+}
+
+@utility menu-item-icon-inactive {
+    @apply text-zinc-500 dark:text-zinc-500;
+}
+
+@utility no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+@layer utilities {
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+/* Scrollbar moderna (thin, arredondada) */
+@layer base {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: rgb(161 161 170) transparent; /* zinc-400 */
+    }
+    .dark * {
+        scrollbar-color: rgb(82 82 91) transparent; /* zinc-600 */
+    }
+}
+@layer utilities {
+    *::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    *::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    *::-webkit-scrollbar-thumb {
+        background: rgb(212 212 216); /* zinc-300 */
+        border-radius: 9999px;
+    }
+    *::-webkit-scrollbar-thumb:hover {
+        background: rgb(161 161 170); /* zinc-400 */
+    }
+    *::-webkit-scrollbar-thumb:active {
+        background: rgb(113 113 122); /* zinc-500 */
+    }
+    .dark *::-webkit-scrollbar-thumb {
+        background: rgb(82 82 91); /* zinc-600 */
+    }
+    .dark *::-webkit-scrollbar-thumb:hover {
+        background: rgb(63 63 70); /* zinc-700 */
+    }
+    .dark *::-webkit-scrollbar-thumb:active {
+        background: rgb(39 39 42); /* zinc-800 */
+    }
+}

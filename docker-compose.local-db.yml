@@ -1,0 +1,51 @@
+# PostgreSQL + Redis para desenvolvimento local (ex.: PHP no Laragon no host).
+#
+# Subir: docker compose -f docker-compose.local-db.yml up -d
+# Parar: docker compose -f docker-compose.local-db.yml down
+#
+# Laragon / PHP no Windows: habilite a extensão pdo_pgsql no php.ini (descomente
+# extension=pdo_pgsql e extension=pgsql se necessário) e reinicie o servidor web.
+# Verifique: php -m | findstr pgsql
+#
+# Portas no host (evita conflito com Postgres/Redis já instalados no Windows):
+# - Postgres: 5433 -> 5432 no container (ajuste LOCALDB_PG_PORT se precisar)
+# - Redis: 6379 -> 6379 (ajuste LOCALDB_REDIS_PORT se a 6379 estiver ocupada)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "${LOCALDB_PG_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: ${LOCALDB_POSTGRES_USER:-getfy}
+      POSTGRES_PASSWORD: ${LOCALDB_POSTGRES_PASSWORD:-getfy}
+      POSTGRES_DB: ${LOCALDB_POSTGRES_DB:-getfy}
+    volumes:
+      - localdb_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${LOCALDB_REDIS_PORT:-6379}:6379"
+    command:
+      - "redis-server"
+      - "--maxmemory"
+      - "${LOCALDB_REDIS_MAXMEMORY:-128mb}"
+      - "--maxmemory-policy"
+      - "${LOCALDB_REDIS_MAXMEMORY_POLICY:-allkeys-lru}"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  localdb_postgres_data:
+    driver: local

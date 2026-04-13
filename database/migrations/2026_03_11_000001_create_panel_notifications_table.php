@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('panel_notifications', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('tenant_id')->nullable()->index();
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->string('type', 64)->index();
+            $table->string('title');
+            $table->text('body')->nullable();
+            $table->string('url', 500)->nullable();
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+            $table->index(['tenant_id', 'user_id', 'read_at']);
+            $table->index(['user_id', 'created_at']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('panel_notifications');
+    }
+};
