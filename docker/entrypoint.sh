@@ -89,9 +89,14 @@ $appUrl = $setupDone ? ($sharedAppUrl !== "" ? $sharedAppUrl : $existingAppUrl) 
 $parts = parse_url((string) $appUrl);
 $scheme = strtolower((string) ($parts["scheme"] ?? ""));
 $host = strtolower((string) ($parts["host"] ?? ""));
+// Só "sobe" HTTP -> HTTPS automaticamente para hostnames (não-IP).
+// Motivo: acesso inicial por IP público costuma ser HTTP (:80). Forçar https://IP quebra cookies Secure e gera 419 no POST.
 if ($scheme === "http" && $host !== "" && $host !== "localhost" && $host !== "127.0.0.1" && $host !== "::1" && filter_var($host, FILTER_VALIDATE_IP) === false) {
     $appUrl = "https://" . $host;
 }
+$parts = parse_url((string) $appUrl);
+$scheme = strtolower((string) ($parts["scheme"] ?? ""));
+$sessionSecure = $scheme === "https";
 $vars = [
     "APP_NAME" => getenv("APP_NAME") ?: "Getfy",
     "APP_ENV" => getenv("APP_ENV") ?: "local",
@@ -103,15 +108,16 @@ $vars = [
     "APP_AUTO_MIGRATE" => getenv("APP_AUTO_MIGRATE") ?: "false",
     "CRON_SECRET" => $cronSecret ?: null,
     "GETFY_WEBHOOK_PUBLIC_URL" => $webhookPublic,
-    "DB_CONNECTION" => getenv("DB_CONNECTION") ?: "mysql",
-    "DB_HOST" => getenv("DB_HOST") ?: "mysql",
-    "DB_PORT" => getenv("DB_PORT") ?: "3306",
+    "DB_CONNECTION" => getenv("DB_CONNECTION") ?: "pgsql",
+    "DB_HOST" => getenv("DB_HOST") ?: "postgres",
+    "DB_PORT" => getenv("DB_PORT") ?: "5432",
     "DB_DATABASE" => getenv("DB_DATABASE") ?: "getfy",
     "DB_USERNAME" => getenv("DB_USERNAME") ?: "getfy",
     "DB_PASSWORD" => getenv("DB_PASSWORD") ?: "getfy",
     "CACHE_STORE" => getenv("CACHE_STORE") ?: "redis",
     "QUEUE_CONNECTION" => getenv("QUEUE_CONNECTION") ?: "redis",
     "SESSION_DRIVER" => getenv("SESSION_DRIVER") ?: "file",
+    "SESSION_SECURE_COOKIE" => $sessionSecure ? "true" : "false",
     "REDIS_CLIENT" => getenv("REDIS_CLIENT") ?: "predis",
     "REDIS_HOST" => getenv("REDIS_HOST") ?: "redis",
     "REDIS_PORT" => getenv("REDIS_PORT") ?: "6379",
