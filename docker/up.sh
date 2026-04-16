@@ -62,6 +62,22 @@ if [ -f "$ENV_FILE" ] && ! grep -Eq '^\s*GETFY_WEBHOOK_PUBLIC_URL\s*=' "$ENV_FIL
   echo "GETFY_WEBHOOK_PUBLIC_URL=${GETFY_WEBHOOK_PUBLIC_URL:-$VAL_APP}" >> "$ENV_FILE"
 fi
 
+# Normaliza banco para PostgreSQL em atualizações de ambientes legados.
+TMP_DB="$(mktemp)"
+awk '
+  BEGIN { c=0; h=0; p=0 }
+  $0 ~ /^GETFY_DB_CONNECTION=/ { print "GETFY_DB_CONNECTION=pgsql"; c=1; next }
+  $0 ~ /^GETFY_DB_HOST=/ { print "GETFY_DB_HOST=postgres"; h=1; next }
+  $0 ~ /^GETFY_DB_PORT=/ { print "GETFY_DB_PORT=5432"; p=1; next }
+  { print }
+  END {
+    if (!c) print "GETFY_DB_CONNECTION=pgsql"
+    if (!h) print "GETFY_DB_HOST=postgres"
+    if (!p) print "GETFY_DB_PORT=5432"
+  }
+' "$ENV_FILE" > "$TMP_DB"
+mv "$TMP_DB" "$ENV_FILE"
+
 COMPOSE_FILES="${GETFY_COMPOSE_FILES:-docker-compose.yml}"
 COMPOSE_ARGS=""
 OLD_IFS="$IFS"
