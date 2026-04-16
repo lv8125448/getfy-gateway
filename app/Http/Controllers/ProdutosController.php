@@ -548,7 +548,7 @@ class ProdutosController extends Controller
                     'price' => $produto->price,
                     'currency' => $produto->currency ?? 'BRL',
                     'interval' => $baseInterval,
-                    'checkout_slug' => null,
+                    'checkout_slug' => SubscriptionPlan::generateUniqueCheckoutSlug(),
                     'position' => 0,
                 ]);
             }
@@ -766,6 +766,7 @@ class ProdutosController extends Controller
         $validated['currency'] = $validated['currency'] ?? $produto->currency ?? 'BRL';
         $maxPosition = $produto->offers()->max('position') ?? 0;
         $validated['position'] = $maxPosition + 1;
+        $validated['checkout_slug'] = ProductOffer::generateUniqueCheckoutSlug();
         ProductOffer::create($validated);
         return back()->with('success', 'Oferta adicionada.');
     }
@@ -884,6 +885,7 @@ class ProdutosController extends Controller
         $validated['currency'] = $validated['currency'] ?? $produto->currency ?? 'BRL';
         $maxPosition = $produto->subscriptionPlans()->max('position') ?? 0;
         $validated['position'] = $maxPosition + 1;
+        $validated['checkout_slug'] = SubscriptionPlan::generateUniqueCheckoutSlug();
         SubscriptionPlan::create($validated);
         return back()->with('success', 'Plano adicionado.');
     }
