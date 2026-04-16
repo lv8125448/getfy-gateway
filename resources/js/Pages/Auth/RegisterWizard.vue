@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, watchEffect } from 'vue';
+import { ref, computed, watch, watchEffect, onMounted } from 'vue';
 import { useForm, Link, usePage } from '@inertiajs/vue3';
 import { User, Building2, ChevronLeft } from 'lucide-vue-next';
 import Button from '@/components/ui/Button.vue';
@@ -15,6 +15,7 @@ const heroImage = computed(() => branding.value.login_hero_image || 'https://cdn
 const props = defineProps({
     revenue_ranges: { type: Array, default: () => [] },
     coproducer_invite: { type: String, default: '' },
+    upgrade_from_customer: { type: Boolean, default: false },
 });
 
 const step = ref(1);
@@ -259,6 +260,18 @@ const form = useForm({
     monthly_revenue_range: '',
     password: '',
     password_confirmation: '',
+});
+
+onMounted(() => {
+    if (!props.upgrade_from_customer) return;
+    const u = page.props.auth?.user;
+    if (!u) return;
+    if (!String(form.name || '').trim()) {
+        form.name = u.name || '';
+    }
+    if (!String(form.email || '').trim()) {
+        form.email = u.email || '';
+    }
 });
 
 const stepTitle = computed(() => {

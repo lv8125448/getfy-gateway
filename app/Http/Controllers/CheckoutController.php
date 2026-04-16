@@ -23,6 +23,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
 use App\Services\AffiliateConversionPixels;
+use App\Services\BuyerAccountService;
 use App\Services\GeoIp;
 use App\Services\EfiPixRecorrenteService;
 use App\Services\StorageService;
@@ -607,18 +608,13 @@ class CheckoutController extends Controller
         }
         $passwordHash = bcrypt($plainPassword);
 
-        $user = User::firstOrCreate(
-            ['email' => $validated['email']],
-            [
-                'name' => $validated['name'] ?? $validated['email'],
-                'password' => $passwordHash,
-                'role' => User::ROLE_ALUNO,
-                'tenant_id' => $tenantId,
-            ]
+        $buyerAccount = app(BuyerAccountService::class)->ensureBuyerFromCheckout(
+            $validated['email'],
+            (string) ($validated['name'] ?? $validated['email']),
+            $passwordHash,
+            $product->type === Product::TYPE_AREA_MEMBROS,
         );
-        if ($user->wasRecentlyCreated) {
-            $user->update(['role' => User::ROLE_ALUNO]);
-        }
+        $user = $buyerAccount['user'];
         $orderMetadata = [];
         $affiliateRef = trim((string) ($validated['affiliate_ref'] ?? $request->input('affiliate_ref', '')));
         if ($affiliateRef !== '') {
@@ -632,9 +628,6 @@ class CheckoutController extends Controller
             }
         }
         if ($product->type === Product::TYPE_AREA_MEMBROS && $plainPassword !== null) {
-            if (! $user->wasRecentlyCreated) {
-                $user->update(['password' => $passwordHash]);
-            }
             Cache::put('access_password.' . $user->id . '.' . $product->id, $plainPassword, now()->addHours(2));
             $orderMetadata['access_password_temp'] = encrypt($plainPassword);
         }

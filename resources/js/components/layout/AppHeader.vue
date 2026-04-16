@@ -10,6 +10,7 @@ import UserMenu from '@/components/layout/UserMenu.vue';
 import { useI18n } from '@/composables/useI18n';
 
 const page = usePage();
+const customerPanel = computed(() => !!page.props.customer_panel);
 const isDashboard = computed(() => page.url === '/dashboard' || page.url.startsWith('/dashboard?'));
 const showLanguage = computed(() => !!page.props?.auth?.user && !page.url.startsWith('/plataforma'));
 const languageOpen = ref(false);
@@ -70,7 +71,7 @@ async function switchLanguage(nextLocale) {
             </template>
         </div>
         <div class="flex shrink-0 items-center gap-2">
-            <ConquistasWidget v-if="!isDashboard || !isMobile" />
+            <ConquistasWidget v-if="!customerPanel && (!isDashboard || !isMobile)" />
             <div v-if="showLanguage" class="relative">
                 <button
                     type="button"
@@ -99,6 +100,7 @@ async function switchLanguage(nextLocale) {
             </div>
             <ThemeToggler />
             <button
+                v-if="!customerPanel"
                 type="button"
                 class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
                 :aria-label="t('header.notifications', 'Notificações')"

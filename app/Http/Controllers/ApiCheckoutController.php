@@ -258,15 +258,13 @@ class ApiCheckoutController extends Controller
         if ($name === '') {
             $name = $email;
         }
-        $user = User::firstOrCreate(
-            ['email' => $email],
-            [
-                'name' => $name,
-                'password' => bcrypt(Str::random(32)),
-                'role' => User::ROLE_ALUNO,
-                'tenant_id' => $tenantId,
-            ]
+        $buyer = app(\App\Services\BuyerAccountService::class)->ensureBuyerFromCheckout(
+            $email,
+            $name,
+            bcrypt(Str::random(32)),
+            false,
         );
+        $user = $buyer['user'];
 
         $rawDoc = preg_replace('/\D/', '', (string) ($customer['cpf'] ?? ''));
         $fake = FakeConsumerData::getForGateway($session->id);

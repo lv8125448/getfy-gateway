@@ -28,7 +28,7 @@ class SendAccessEmailOnOrderCompleted
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            throw $e;
+            report($e);
         }
     }
 }

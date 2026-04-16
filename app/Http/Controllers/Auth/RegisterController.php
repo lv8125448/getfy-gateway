@@ -25,7 +25,7 @@ class RegisterController extends Controller
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $role = User::ROLE_ALUNO;
+        $role = User::ROLE_CLIENTE;
         if (User::count() === 0) {
             $role = User::ROLE_ADMIN;
         }
@@ -35,6 +35,7 @@ class RegisterController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'role' => $role,
+            'tenant_id' => null,
         ]);
 
         Auth::login($user);
@@ -43,6 +44,9 @@ class RegisterController extends Controller
         if ($user->canAccessPanel()) {
             return redirect()->intended('/dashboard');
         }
-        return redirect()->intended('/area-membros');
+
+        $this->forgetAreaMembrosHomeIntended($request);
+
+        return redirect()->intended('/painel-cliente');
     }
 }

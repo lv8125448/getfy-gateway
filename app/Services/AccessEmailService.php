@@ -112,47 +112,24 @@ class AccessEmailService
         $tenantIdForMail = $order->tenant_id ?? $product->tenant_id;
         $isRenewal = (bool) $order->is_renewal;
 
-        if ($isRenewal) {
-            // Renovação: enviar e-mail de sucesso (não de acesso). Evitar duplicado.
-            $cacheKey = 'access_email_sent.' . $order->id;
-            if (! $force && ! Cache::add($cacheKey, true, now()->addHours(24))) {
-                Log::info('AccessEmailService: e-mail de renovação já enviado (evitando duplicado).', [
-                    'order_id' => $order->id,
-                    'product_type' => $product->type,
-                    'tenant_id_for_mail' => $tenantIdForMail,
-                ]);
+        $cacheKey = 'access_email_sent.'.$order->id;
+        $cacheTtl = $isRenewal ? now()->addHours(24) : now()->addHours(1);
+        if (! $force && Cache::has($cacheKey)) {
+            Log::info('AccessEmailService: e-mail já enviado anteriormente (cache).', [
+                'order_id' => $order->id,
+                'tenant_id_for_mail' => $tenantIdForMail,
+            ]);
 
-                return true;
-            }
-            $subject = 'Renovação confirmada — ' . $product->name;
+            return true;
+        }
+
+        if ($isRenewal) {
+            $subject = 'Renovação confirmada — '.$product->name;
             $bodyHtml = $this->buildRenewalSuccessBody($customerName, $product->name);
         } elseif ($product->type === Product::TYPE_AREA_MEMBROS_EXTERNA) {
-            // Entrega externa: não enviar e-mail de acesso (link/senha).
-            $cacheKey = 'access_email_sent.' . $order->id;
-            if (! $force && ! Cache::add($cacheKey, true, now()->addHours(1))) {
-                Log::info('AccessEmailService: e-mail (entrega externa) já enviado (evitando duplicado).', [
-                    'order_id' => $order->id,
-                    'product_type' => $product->type,
-                    'tenant_id_for_mail' => $tenantIdForMail,
-                ]);
-
-                return true;
-            }
-
-            $subject = 'Compra confirmada — ' . $product->name;
+            $subject = 'Compra confirmada — '.$product->name;
             $bodyHtml = $this->buildExternalMemberAreaPendingBody($customerName, $product->name);
         } else {
-            // Compra única / nova assinatura: evitar envio duplicado (webhook pode disparar OrderCompleted mais de uma vez)
-            $cacheKey = 'access_email_sent.' . $order->id;
-            if (! $force && ! Cache::add($cacheKey, true, now()->addHours(1))) {
-                Log::info('AccessEmailService: e-mail de acesso já enviado (evitando duplicado).', [
-                    'order_id' => $order->id,
-                    'product_type' => $product->type,
-                    'tenant_id_for_mail' => $tenantIdForMail,
-                ]);
-
-                return true;
-            }
             $bodyHtmlBeforeReplace = $bodyHtml;
             $replace = [
                 '{nome_cliente}' => $customerName,
@@ -175,36 +152,12 @@ class AccessEmailService
         }
 
         try {
-            try {
-                $this->mailConfig->applyMailerConfigForTenant($tenantIdForMail, [], null);
-            } catch (\Throwable $e) {
-                Log::error('AccessEmailService: e-mail não enviado — falha ao aplicar config de e-mail do tenant (Hostinger/SMTP/SendGrid).', [
-                    'order_id' => $order->id,
-                    'product_type' => $productType,
-                    'tenant_id_for_mail' => $tenantIdForMail,
-                    'message' => $e->getMessage(),
-                ]);
-
+            $sent = $this->sendAccessMailableWithFallback($subject, $bodyHtml, $customerEmail, $tenantIdForMail, $template);
+            if (! $sent) {
                 return false;
             }
 
-            $fromAddress = config('mail.from.address');
-            $fromName = ! empty($template['from_name']) ? $template['from_name'] : (config('mail.from.name') ?? '');
-
-            Log::info('AccessEmailService: enviando com provedor.', [
-                'order_id' => $order->id,
-                'product_type' => $productType,
-                'tenant_id_for_mail' => $tenantIdForMail,
-                'provider' => $this->mailConfig->getProviderForTenant($tenantIdForMail),
-                'host' => config('mail.mailers.smtp.host'),
-                'from' => $fromAddress,
-                'from_name' => $fromName,
-            ]);
-            Mail::purge('smtp');
-
-            $mailable = new AccessGrantedMail($subject, $bodyHtml);
-            $mailable->from($fromAddress, $fromName);
-            Mail::mailer('smtp')->to($customerEmail)->send($mailable);
+            Cache::put($cacheKey, true, $cacheTtl);
 
             Log::info($isRenewal ? 'AccessEmailService: e-mail de renovação enviado.' : 'AccessEmailService: e-mail de acesso enviado.', [
                 'order_id' => $order->id,
@@ -239,6 +192,71 @@ class AccessEmailService
 
             return false;
         }
+    }
+
+    /**
+     * Tenta SMTP do tenant (ou .env); se falhar, SMTP global em /plataforma/configuracoes (tenant_id null).
+     */
+    private function sendAccessMailableWithFallback(
+        string $subject,
+        string $bodyHtml,
+        string $customerEmail,
+        ?int $tenantIdForMail,
+        array $template
+    ): bool {
+        $resolveFrom = function () use ($template) {
+            $fromAddress = config('mail.from.address');
+            $fromName = ! empty($template['from_name']) ? $template['from_name'] : (config('mail.from.name') ?? '');
+
+            return [$fromAddress, $fromName];
+        };
+
+        $attempts = [
+            [
+                'label' => 'smtp_tenant',
+                'apply' => function () use ($tenantIdForMail): void {
+                    $this->mailConfig->applyMailerConfigForTenant($tenantIdForMail, [], null);
+                },
+            ],
+            [
+                'label' => 'smtp_plataforma_global',
+                'apply' => function (): void {
+                    if (! $this->mailConfig->isEmailConfigured(null)) {
+                        throw new \RuntimeException('SMTP global da plataforma não configurado (settings tenant_id null).');
+                    }
+                    $this->mailConfig->applyPlatformGlobalMailerConfig();
+                },
+            ],
+        ];
+
+        foreach ($attempts as $attempt) {
+            try {
+                $attempt['apply']();
+                Mail::purge('smtp');
+                [$fromAddress, $fromName] = $resolveFrom();
+                Log::info('AccessEmailService: enviando.', [
+                    'via' => $attempt['label'],
+                    'tenant_id_for_mail' => $tenantIdForMail,
+                    'provider' => $this->mailConfig->getProviderForTenant($tenantIdForMail),
+                    'host' => config('mail.mailers.smtp.host'),
+                    'from' => $fromAddress,
+                    'from_name' => $fromName,
+                ]);
+                $mailable = new AccessGrantedMail($subject, $bodyHtml);
+                $mailable->from($fromAddress, $fromName);
+                Mail::mailer('smtp')->to($customerEmail)->send($mailable);
+
+                return true;
+            } catch (\Throwable $e) {
+                Log::warning('AccessEmailService: tentativa de envio falhou.', [
+                    'via' => $attempt['label'],
+                    'order_tenant' => $tenantIdForMail,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -298,25 +316,7 @@ class AccessEmailService
             $bodyHtml = $this->prependLogoToBody($template['logo_url'], $bodyHtml);
         }
 
-        try {
-            $this->mailConfig->applyMailerConfigForTenant($product->tenant_id, [], null);
-
-            $mailable = new AccessGrantedMail($subject, $bodyHtml);
-            if (! empty($template['from_name'])) {
-                $mailable->from(config('mail.from.address'), $template['from_name']);
-            }
-            Mail::mailer('smtp')->to($customerEmail)->send($mailable);
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::error('AccessEmailService: falha ao enviar e-mail de acesso (manual).', [
-                'user_id' => $user->id,
-                'product_id' => $product->id,
-                'message' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
+        return $this->sendAccessMailableWithFallback($subject, $bodyHtml, $customerEmail, $product->tenant_id, $template);
     }
 
     private function resolveLinkAcesso(Product $product): string

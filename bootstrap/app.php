@@ -57,6 +57,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.tenant' => \App\Http\Middleware\EnsureAdminHasTenant::class,
             'seller.panel' => \App\Http\Middleware\EnsureSellerPanel::class,
             'platform.admin' => \App\Http\Middleware\EnsurePlatformAdmin::class,
+            'customer.panel' => \App\Http\Middleware\EnsureCustomerPanel::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

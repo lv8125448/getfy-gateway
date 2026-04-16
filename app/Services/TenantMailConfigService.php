@@ -126,6 +126,27 @@ class TenantMailConfigService
         $provider = $provider ?? Setting::get('email_provider', 'smtp', $tenantId);
         $config = $this->getMailConfigForProvider($tenantId, $overrides, $provider);
 
+        $this->applySmtpConfigToLaravel($config, $tenantId, $provider, $overrides);
+    }
+
+    /**
+     * SMTP guardado em Configurações da plataforma (tenant_id null), sem resolver outro tenant.
+     * Usado como fallback quando o infoprodutor ainda não configurou e-mail.
+     */
+    public function applyPlatformGlobalMailerConfig(array $overrides = [], ?string $provider = null): void
+    {
+        $tenantId = null;
+        $provider = $provider ?? Setting::get('email_provider', 'smtp', null);
+        $config = $this->getMailConfigForProvider(null, $overrides, $provider);
+
+        $this->applySmtpConfigToLaravel($config, $tenantId, $provider, $overrides);
+    }
+
+    /**
+     * @param  array{host: string, port: int, encryption: ?string, username: ?string, password: ?string}  $config
+     */
+    private function applySmtpConfigToLaravel(array $config, ?int $tenantId, string $provider, array $overrides): void
+    {
         config(['mail.mailers.smtp.transport' => 'smtp']);
         config(['mail.mailers.smtp.host' => $config['host']]);
         config(['mail.mailers.smtp.port' => $config['port']]);
@@ -134,10 +155,10 @@ class TenantMailConfigService
         config(['mail.mailers.smtp.password' => $config['password']]);
 
         $fromAddress = $config['username'] ?: config('mail.from.address');
+        $replyTo = null;
         if ($provider === 'sendgrid') {
             $fromAddress = $overrides['sendgrid_mail_from_address'] ?? Setting::get('sendgrid_mail_from_address', config('mail.from.address'), $tenantId);
             $fromName = $overrides['sendgrid_mail_from_name'] ?? Setting::get('sendgrid_mail_from_name', config('mail.from.name'), $tenantId);
-            $replyTo = null;
         } elseif ($provider === 'hostinger') {
             $hostingerFrom = Setting::get('hostinger_mail_from_address', '', $tenantId);
             if ($hostingerFrom !== null && $hostingerFrom !== '') {

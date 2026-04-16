@@ -45,6 +45,7 @@ class Product extends Model
         'affiliate_page_url',
         'affiliate_support_email',
         'affiliate_showcase_description',
+        'refund_policy_days',
     ];
 
     protected function casts(): array
@@ -59,6 +60,7 @@ class Product extends Model
             'affiliate_commission_percent' => 'decimal:2',
             'affiliate_manual_approval' => 'boolean',
             'affiliate_show_in_showcase' => 'boolean',
+            'refund_policy_days' => 'integer',
         ];
     }
 

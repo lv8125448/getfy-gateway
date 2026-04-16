@@ -29,7 +29,7 @@ class AlunosController extends Controller
 
     private function baseAlunosQuery(?int $tenantId)
     {
-        return User::where('role', User::ROLE_ALUNO)
+        return User::whereIn('role', User::buyerRoleValues())
             ->whereHas('products', fn ($q) => $q->forTenant($tenantId));
     }
 
@@ -104,7 +104,7 @@ class AlunosController extends Controller
 
         $produtos = Product::forTenant($tenantId)->withCount('users')->orderBy('name')->get();
 
-        $totalAlunos = User::where('role', User::ROLE_ALUNO)
+        $totalAlunos = User::whereIn('role', User::buyerRoleValues())
             ->whereHas('products', fn ($q) => $q->forTenant($tenantId))
             ->count();
 
@@ -114,7 +114,7 @@ class AlunosController extends Controller
 
         $produtosAtivos = Product::forTenant($tenantId)->whereHas('users')->count();
 
-        $alunosNovos30dias = User::where('role', User::ROLE_ALUNO)
+        $alunosNovos30dias = User::whereIn('role', User::buyerRoleValues())
             ->whereExists(function ($q) use ($tenantId) {
                 $q->select(DB::raw(1))
                     ->from('product_user')
@@ -149,7 +149,7 @@ class AlunosController extends Controller
     public function show(User $aluno): JsonResponse
     {
         $tenantId = auth()->user()->tenant_id;
-        if ($aluno->role !== User::ROLE_ALUNO) {
+        if (! $aluno->isCliente()) {
             abort(404);
         }
         if (! $aluno->products()->forTenant($tenantId)->exists()) {
@@ -184,8 +184,8 @@ class AlunosController extends Controller
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
-            'role' => User::ROLE_ALUNO,
-            'tenant_id' => $tenantId,
+            'role' => User::ROLE_CLIENTE,
+            'tenant_id' => null,
         ]);
 
         foreach ($productIds as $pid) {
@@ -217,7 +217,7 @@ class AlunosController extends Controller
     public function update(Request $request, User $aluno): JsonResponse
     {
         $tenantId = auth()->user()->tenant_id;
-        if ($aluno->role !== User::ROLE_ALUNO) {
+        if (! $aluno->isCliente()) {
             abort(404);
         }
         if (! $aluno->products()->forTenant($tenantId)->exists()) {
@@ -262,7 +262,7 @@ class AlunosController extends Controller
     public function destroy(User $aluno): JsonResponse
     {
         $tenantId = auth()->user()->tenant_id;
-        if ($aluno->role !== User::ROLE_ALUNO) {
+        if (! $aluno->isCliente()) {
             abort(404);
         }
         if (! $aluno->products()->forTenant($tenantId)->exists()) {
@@ -374,8 +374,8 @@ class AlunosController extends Controller
                     'name' => mb_substr($name, 0, 255),
                     'email' => $email,
                     'password' => Hash::make($password),
-                    'role' => User::ROLE_ALUNO,
-                    'tenant_id' => $tenantId,
+                    'role' => User::ROLE_CLIENTE,
+                    'tenant_id' => null,
                 ]);
 
                 foreach ($productIds as $pid) {
@@ -433,7 +433,7 @@ class AlunosController extends Controller
     public function removeProduct(User $aluno, Product $produto): JsonResponse
     {
         $tenantId = auth()->user()->tenant_id;
-        if ($aluno->role !== User::ROLE_ALUNO) {
+        if (! $aluno->isCliente()) {
             abort(404);
         }
         if ($produto->tenant_id !== $tenantId) {

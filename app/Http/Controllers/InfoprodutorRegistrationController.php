@@ -37,6 +37,24 @@ class InfoprodutorRegistrationController extends Controller
         return Inertia::render('Auth/RegisterWizard', [
             'revenue_ranges' => self::revenueRangeOptions(),
             'coproducer_invite' => $request->query('coproducer_invite'),
+            'upgrade_from_customer' => false,
+        ]);
+    }
+
+    public function createUpgrade(Request $request): Response|RedirectResponse
+    {
+        if (DockerSetupState::isDocker() && ! DockerSetupState::isSetupDone()) {
+            return redirect('/docker-setup');
+        }
+        $user = Auth::user();
+        if (! $user instanceof User || ! $user->isCliente()) {
+            return redirect()->route('dashboard');
+        }
+
+        return Inertia::render('Auth/RegisterWizard', [
+            'revenue_ranges' => self::revenueRangeOptions(),
+            'coproducer_invite' => $request->query('coproducer_invite'),
+            'upgrade_from_customer' => true,
         ]);
     }
 
@@ -60,9 +78,12 @@ class InfoprodutorRegistrationController extends Controller
             'email' => ['required', 'email', 'max:255'],
         ]);
 
-        $exists = User::query()->where('email', $validated['email'])->exists();
+        $q = User::query()->where('email', $validated['email']);
+        if (Auth::check()) {
+            $q->where('id', '!=', Auth::id());
+        }
 
-        return response()->json(['available' => ! $exists]);
+        return response()->json(['available' => ! $q->exists()]);
     }
 
     public function validateDocument(Request $request): \Illuminate\Http\JsonResponse
@@ -82,7 +103,11 @@ class InfoprodutorRegistrationController extends Controller
                     'message' => 'CPF inválido.',
                 ], 422);
             }
-            if (User::query()->where('document', $docDigits)->exists()) {
+            $docQ = User::query()->where('document', $docDigits);
+            if (Auth::check()) {
+                $docQ->where('id', '!=', Auth::id());
+            }
+            if ($docQ->exists()) {
                 return response()->json([
                     'available' => false,
                     'field' => 'document',
@@ -100,7 +125,11 @@ class InfoprodutorRegistrationController extends Controller
             ], 422);
         }
 
-        if (User::query()->where('document', $docDigits)->exists()) {
+        $docQ2 = User::query()->where('document', $docDigits);
+        if (Auth::check()) {
+            $docQ2->where('id', '!=', Auth::id());
+        }
+        if ($docQ2->exists()) {
             return response()->json([
                 'available' => false,
                 'field' => 'document',
@@ -116,7 +145,11 @@ class InfoprodutorRegistrationController extends Controller
             ], 422);
         }
 
-        if (User::query()->where('legal_representative_cpf', $rep)->exists()) {
+        $lrQ = User::query()->where('legal_representative_cpf', $rep);
+        if (Auth::check()) {
+            $lrQ->where('id', '!=', Auth::id());
+        }
+        if ($lrQ->exists()) {
             return response()->json([
                 'available' => false,
                 'field' => 'legal_representative_cpf',
@@ -124,7 +157,11 @@ class InfoprodutorRegistrationController extends Controller
             ]);
         }
 
-        if (User::query()->where('document', $rep)->exists()) {
+        $lrDoc = User::query()->where('document', $rep);
+        if (Auth::check()) {
+            $lrDoc->where('id', '!=', Auth::id());
+        }
+        if ($lrDoc->exists()) {
             return response()->json([
                 'available' => false,
                 'field' => 'legal_representative_cpf',
@@ -143,6 +180,10 @@ class InfoprodutorRegistrationController extends Controller
 
         if (User::count() === 0) {
             abort(403, 'Cadastro indisponível.');
+        }
+
+        if (Auth::check() && Auth::user()->isCliente()) {
+            return $this->upgradeClienteToInfoprodutor($request);
         }
 
         $rules = [
@@ -228,6 +269,7 @@ class InfoprodutorRegistrationController extends Controller
             'monthly_revenue_range' => $validated['monthly_revenue_range'],
             'kyc_status' => User::KYC_NOT_SUBMITTED,
             'account_status' => 'approved',
+            'seller_onboarded_at' => now(),
         ]);
 
         $user->update(['tenant_id' => $user->id]);
@@ -265,4 +307,134 @@ class InfoprodutorRegistrationController extends Controller
 
         return redirect()->intended('/dashboard')->with('success', $msg);
     }
+
+    /**
+     * Cliente autenticado completa cadastro e vira infoprodutor (mesma conta).
+     */
+    private function upgradeClienteToInfoprodutor(Request $request): RedirectResponse
+    {
+        $user = Auth::user();
+        if (! $user instanceof User || ! $user->isCliente()) {
+            abort(403);
+        }
+
+        $rules = [
+            'person_type' => ['required', 'string', Rule::in(['pf', 'pj'])],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'birth_date' => ['required', 'date', 'before:'.now()->subYears(18)->format('Y-m-d')],
+            'document' => ['required', 'string', 'max:20'],
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'legal_representative_cpf' => ['nullable', 'string', 'max:20'],
+            'address_zip' => ['required', 'string', 'regex:/^\d{8}$/'],
+            'address_street' => ['required', 'string', 'max:255'],
+            'address_number' => ['required', 'string', 'max:32'],
+            'address_complement' => ['nullable', 'string', 'max:120'],
+            'address_neighborhood' => ['required', 'string', 'max:120'],
+            'address_city' => ['required', 'string', 'max:120'],
+            'address_state' => ['required', 'string', 'size:2'],
+            'monthly_revenue_range' => ['required', 'string', Rule::in(User::MONTHLY_REVENUE_RANGES)],
+            'password' => ['required', 'string', 'confirmed', Password::defaults()],
+            'coproducer_invite' => ['nullable', 'string', 'max:64'],
+        ];
+
+        $validated = $request->validate($rules, [
+            'email.unique' => 'Este e-mail já está em uso.',
+            'birth_date.before' => 'É necessário ter pelo menos 18 anos.',
+        ]);
+
+        $docDigits = BrazilianDocuments::digits($validated['document']);
+        if ($validated['person_type'] === 'pf') {
+            if (! BrazilianDocuments::isValidCpf($docDigits)) {
+                return back()->withErrors(['document' => 'CPF inválido.'])->withInput();
+            }
+        } else {
+            if (! BrazilianDocuments::isValidCnpj($docDigits)) {
+                return back()->withErrors(['document' => 'CNPJ inválido.'])->withInput();
+            }
+            if (empty(trim((string) ($validated['company_name'] ?? '')))) {
+                return back()->withErrors(['company_name' => 'Informe a razão social da empresa.'])->withInput();
+            }
+            $rep = BrazilianDocuments::digits((string) ($validated['legal_representative_cpf'] ?? ''));
+            if ($rep === '' || ! BrazilianDocuments::isValidCpf($rep)) {
+                return back()->withErrors(['legal_representative_cpf' => 'CPF do representante legal inválido.'])->withInput();
+            }
+        }
+
+        if (User::query()->where('document', $docDigits)->where('id', '!=', $user->id)->exists()) {
+            return back()->withErrors([
+                'document' => $validated['person_type'] === 'pf'
+                    ? 'Este CPF já está cadastrado.'
+                    : 'Este CNPJ já está cadastrado.',
+            ])->withInput();
+        }
+
+        if ($validated['person_type'] === 'pj') {
+            $repDigits = BrazilianDocuments::digits((string) $validated['legal_representative_cpf']);
+            if (User::query()->where('legal_representative_cpf', $repDigits)->where('id', '!=', $user->id)->exists()) {
+                return back()->withErrors(['legal_representative_cpf' => 'Este CPF já está vinculado a outra conta.'])->withInput();
+            }
+            if (User::query()->where('document', $repDigits)->where('id', '!=', $user->id)->exists()) {
+                return back()->withErrors(['legal_representative_cpf' => 'Este CPF já está cadastrado como titular de outra conta.'])->withInput();
+            }
+        }
+
+        $user->update([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'role' => User::ROLE_INFOPRODUTOR,
+            'person_type' => $validated['person_type'],
+            'document' => $docDigits,
+            'birth_date' => $validated['birth_date'],
+            'company_name' => $validated['person_type'] === 'pj' ? trim((string) $validated['company_name']) : null,
+            'legal_representative_cpf' => $validated['person_type'] === 'pj'
+                ? BrazilianDocuments::digits((string) $validated['legal_representative_cpf'])
+                : null,
+            'address_zip' => $validated['address_zip'],
+            'address_street' => $validated['address_street'],
+            'address_number' => $validated['address_number'],
+            'address_complement' => $validated['address_complement'] ?? null,
+            'address_neighborhood' => $validated['address_neighborhood'],
+            'address_city' => $validated['address_city'],
+            'address_state' => strtoupper($validated['address_state']),
+            'monthly_revenue_range' => $validated['monthly_revenue_range'],
+            'kyc_status' => User::KYC_NOT_SUBMITTED,
+            'account_status' => 'approved',
+            'seller_onboarded_at' => now(),
+        ]);
+
+        $user->update(['tenant_id' => $user->id]);
+
+        if (Schema::hasTable('tenant_wallets')) {
+            TenantWallet::query()->firstOrCreate(
+                ['tenant_id' => $user->tenant_id],
+                [
+                    'available_balance' => 0,
+                    'pending_balance' => 0,
+                    'currency' => 'BRL',
+                    'available_pix' => 0,
+                    'available_card' => 0,
+                    'available_boleto' => 0,
+                    'pending_pix' => 0,
+                    'pending_card' => 0,
+                    'pending_boleto' => 0,
+                ]
+            );
+        }
+
+        $this->platformEmailNotifications->welcomeInfoprodutor($user->fresh());
+
+        $inviteAccepted = false;
+        if (! empty($validated['coproducer_invite'])) {
+            $inviteAccepted = ProductCoproducer::tryActivateAfterRegistration($user->fresh(), $validated['coproducer_invite']);
+        }
+
+        $msg = $inviteAccepted
+            ? 'Conta de infoprodutor ativada e co-produção vinculada. Complete o KYC para o Financeiro.'
+            : 'Parabéns! Sua conta de infoprodutor está ativa. Complete o KYC para o Financeiro.';
+
+        return redirect()->intended('/dashboard')->with('success', $msg);
+    }
 }
+

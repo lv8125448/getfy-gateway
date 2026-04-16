@@ -16,6 +16,7 @@ import KycBanner from '@/components/layout/KycBanner.vue';
 const { isExpanded } = useSidebarProvider();
 usePanelPushSubscribe();
 const page = usePage();
+const customerPanel = computed(() => !!page.props.customer_panel);
 const pageTitle = computed(() => page.props.pageTitle ?? null);
 const pageTitleBadge = computed(() => page.props.pageTitleBadge ?? null);
 const contentMaxWidth = computed(() => (page.props.layoutFullWidth ? 'max-w-[1600px]' : 'max-w-7xl'));
@@ -97,7 +98,7 @@ onBeforeUnmount(() => {
             ]"
         >
             <div class="flex w-full shrink-0 flex-col gap-2">
-                <div class="-mx-3 md:-mx-4 lg:-mx-6">
+                <div v-if="!customerPanel" class="-mx-3 md:-mx-4 lg:-mx-6">
                     <CloudBillingBanner />
                     <KycBanner />
                 </div>
@@ -132,11 +133,12 @@ onBeforeUnmount(() => {
             <FlashToast />
             <PwaInstallPrompt />
             <NotificationsPanel
+                v-if="!customerPanel"
                 :open="showNotificationsPanel"
                 @update:open="showNotificationsPanel = $event"
                 @unread-count-update="onNotificationsUnreadCountUpdate"
             />
-            <MobileBottomNav />
+            <MobileBottomNav v-if="!customerPanel" />
             <div
                 class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-zinc-800"
             >

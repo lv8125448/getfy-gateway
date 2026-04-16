@@ -20,6 +20,9 @@ class EnsureGuest
         if ($user->canAccessSellerPanel()) {
             return redirect('/dashboard');
         }
+        if ($user->canAccessCustomerPanel()) {
+            return redirect('/painel-cliente');
+        }
 
         return redirect('/area-membros');
     }

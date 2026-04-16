@@ -68,6 +68,7 @@ class User extends Authenticatable
         'kyc_rejection_reason',
         'kyc_reviewed_at',
         'kyc_reviewed_by',
+        'seller_onboarded_at',
     ];
 
     /** @deprecated Migração: antigo admin virou infoprodutor; manter só por compatibilidade de dados legados */
@@ -77,9 +78,21 @@ class User extends Authenticatable
 
     public const ROLE_INFOPRODUTOR = 'infoprodutor';
 
+    /** Comprador (área do cliente / compras) */
+    public const ROLE_CLIENTE = 'cliente';
+
+    /** @deprecated Use ROLE_CLIENTE */
     public const ROLE_ALUNO = 'aluno';
 
     public const ROLE_TEAM = 'team';
+
+    /**
+     * @return list<string>
+     */
+    public static function buyerRoleValues(): array
+    {
+        return [self::ROLE_CLIENTE, self::ROLE_ALUNO];
+    }
 
     public function isAdmin(): bool
     {
@@ -96,9 +109,15 @@ class User extends Authenticatable
         return $this->role === self::ROLE_INFOPRODUTOR;
     }
 
+    public function isCliente(): bool
+    {
+        return $this->role === self::ROLE_CLIENTE || $this->role === self::ROLE_ALUNO;
+    }
+
+    /** @deprecated Use isCliente() */
     public function isAluno(): bool
     {
-        return $this->role === self::ROLE_ALUNO;
+        return $this->isCliente();
     }
 
     public function isTeam(): bool
@@ -131,6 +150,42 @@ class User extends Authenticatable
     }
 
     /**
+     * Painel do cliente: compras e produtos adquiridos (ex.: /painel-cliente).
+     */
+    public function canAccessCustomerPanel(): bool
+    {
+        if ($this->isPlatformAdmin() || $this->isAdmin()) {
+            return false;
+        }
+
+        return $this->isCliente() || $this->isInfoprodutor() || $this->isTeam();
+    }
+
+    /**
+     * Pode alternar para o painel do infoprodutor (cadastro completo ou já é vendedor/equipe).
+     */
+    public function canSwitchToSellerPanel(): bool
+    {
+        if ($this->isPlatformAdmin() || $this->isAdmin()) {
+            return false;
+        }
+
+        return $this->isInfoprodutor() || $this->isTeam();
+    }
+
+    /**
+     * Precisa completar cadastro de infoprodutor antes de aceder ao painel do vendedor.
+     */
+    public function needsOnboardingAsSeller(): bool
+    {
+        if ($this->isPlatformAdmin() || $this->isAdmin()) {
+            return false;
+        }
+
+        return $this->isCliente() && $this->seller_onboarded_at === null;
+    }
+
+    /**
      * Painel operador da plataforma (/plataforma): platform_admin sem tenant, ou papel admin global.
      */
     public function canAccessPlatformPanel(): bool
@@ -155,6 +210,11 @@ class User extends Authenticatable
     public function subscriptions(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(Subscription::class);
+    }
+
+    public function orders(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Order::class);
     }
 
     public function savedPaymentMethods(): \Illuminate\Database\Eloquent\Relations\HasMany
@@ -234,6 +294,7 @@ class User extends Authenticatable
             'payout_settings' => 'array',
             'birth_date' => 'date',
             'kyc_reviewed_at' => 'datetime',
+            'seller_onboarded_at' => 'datetime',
         ];
     }
 }

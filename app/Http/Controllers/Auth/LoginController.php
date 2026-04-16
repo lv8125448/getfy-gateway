@@ -103,7 +103,16 @@ class LoginController extends Controller
                     ])->onlyInput('email');
                 }
 
+                $request->session()->put('panel_context', 'seller');
+
                 return redirect()->intended('/dashboard');
+            }
+
+            if ($user->canAccessCustomerPanel()) {
+                $request->session()->put('panel_context', 'customer');
+                $this->forgetAreaMembrosHomeIntended($request);
+
+                return redirect()->intended('/painel-cliente');
             }
 
             return redirect()->intended('/area-membros');

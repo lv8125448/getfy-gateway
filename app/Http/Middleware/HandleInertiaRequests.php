@@ -115,6 +115,17 @@ class HandleInertiaRequests extends Middleware
             $kycSubject->refresh();
         }
 
+        // UI do “painel aluno” só nas URLs de comprador; não misturar com sessão panel_context
+        // (senão /dashboard com session customer escondia o atalho “Painel do aluno” no menu).
+        $customerPanel = false;
+        if ($user && $user->canAccessCustomerPanel()) {
+            $path = $request->path();
+            $customerPanel = $path === 'painel-cliente'
+                || str_starts_with($path, 'painel-cliente/')
+                || $path === 'area-membros'
+                || str_starts_with($path, 'area-membros/');
+        }
+
         $shared = [
             ...parent::share($request),
             'csrf_token' => $request->session()->token(),
@@ -131,6 +142,10 @@ class HandleInertiaRequests extends Middleware
                     'kyc_status' => $kycSubject?->kyc_status,
                     'needs_kyc_attention' => $kycSubject !== null
                         && ($kycSubject->kyc_status ?? null) !== User::KYC_APPROVED,
+                    'panel_switch' => [
+                        'customer' => $user->canAccessCustomerPanel(),
+                        'seller' => $user->canSwitchToSellerPanel() || $user->needsOnboardingAsSeller(),
+                    ],
                 ] : null,
                 'permissions' => ($user && $user->canAccessSellerPanel())
                     ? app(TeamAccessService::class)->permissionsFor($user)
@@ -162,6 +177,7 @@ class HandleInertiaRequests extends Middleware
             'notifications_unread_count' => $notificationsUnreadCount,
             'member_notifications_unread_count' => $memberNotificationsUnreadCount,
             'member_push_subscribed' => $memberPushSubscribed,
+            'customer_panel' => $customerPanel,
         ];
 
         if ($user && ($user->canAccessSellerPanel() || $user->canAccessPlatformPanel())) {

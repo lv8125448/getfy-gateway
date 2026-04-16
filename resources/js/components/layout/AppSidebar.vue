@@ -24,6 +24,7 @@ import {
     TicketPercent,
     GraduationCap,
     UserPlus,
+    RotateCcw,
 } from 'lucide-vue-next';
 import { useSidebar } from '@/composables/useSidebar';
 import ConquistasWidget from '@/components/layout/ConquistasWidget.vue';
@@ -38,6 +39,8 @@ const hoverX = ref(0);
 const hoverY = ref(0);
 
 const showText = () => isExpanded.value || isMobileOpen.value;
+
+const homeHref = computed(() => (page.props.customer_panel ? '/painel-cliente' : '/dashboard'));
 
 const appSettings = () => page.props.appSettings ?? {};
 const appName = () => appSettings().app_name || 'Infoprodutor';
@@ -77,11 +80,16 @@ const canView = (key) => {
 };
 
 const navItems = computed(() => {
+    if (page.props.customer_panel) {
+        return [{ name: 'Minhas compras', href: '/painel-cliente', icon: Package }];
+    }
+
     const items = [];
 
     // Core items com permissões (usuário de equipe)
     if (canView('dashboard.view')) items.push({ name: t('sidebar.dashboard', 'Dashboard'), href: '/dashboard', icon: LayoutDashboard });
     if (canView('vendas.view')) items.push({ name: t('sidebar.sales', 'Vendas'), href: '/vendas', icon: CircleDollarSign });
+    if (canView('vendas.view')) items.push({ name: 'Reembolsos', href: '/reembolsos', icon: RotateCcw });
     if (canView('produtos.view')) {
         items.push({ name: t('sidebar.products', 'Produtos'), href: '/produtos', icon: Package });
         items.push({
@@ -113,6 +121,7 @@ const navItems = computed(() => {
 
 function isActive(href) {
     const url = page.url.split('?')[0];
+    if (href === '/reembolsos') return url === '/reembolsos' || url.startsWith('/reembolsos/');
     if (href === '/dashboard') return url === '/dashboard' || url === '/';
     if (href === '/produtos/vitrine-afiliacao') {
         return url === '/produtos/vitrine-afiliacao' || url.startsWith('/produtos/vitrine-afiliacao/');
@@ -185,7 +194,7 @@ function onItemMouseLeave() {
             <!-- Expandido: logo + botão recolher -->
             <template v-if="showText()">
                 <Link
-                    href="/dashboard"
+                    :href="homeHref"
                     :prefetch="panelNavPrefetch"
                     class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-zinc-900 dark:text-white"
                 >
@@ -267,10 +276,10 @@ function onItemMouseLeave() {
                 </template>
             </ul>
         </nav>
-        <!-- Mobile: Instalar App + Conquistas (parte inferior) -->
+        <!-- Mobile: Instalar App + Conquistas (conquistas ocultas no painel do cliente) -->
         <div v-if="isMobile && showText()" class="space-y-2 px-4 py-4 lg:hidden">
             <PwaInstallButton />
-            <ConquistasWidget variant="sidebar" />
+            <ConquistasWidget v-if="!page.props.customer_panel" variant="sidebar" />
         </div>
     </aside>
     <div

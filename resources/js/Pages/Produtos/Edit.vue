@@ -162,6 +162,9 @@ const form = useForm({
         subject: et.subject ?? DEFAULT_EMAIL_TEMPLATE.subject,
         body_html: et.body_html ?? DEFAULT_EMAIL_TEMPLATE.body_html,
     },
+    refund_policy_days: [7, 14, 30].includes(Number(props.produto.refund_policy_days))
+        ? Number(props.produto.refund_policy_days)
+        : 7,
 });
 
 const coproducerForm = useForm({
@@ -1026,6 +1029,7 @@ function submit() {
             fd.append('email_template[body_html]', form.email_template.body_html || '');
         }
         fd.append('deliverable_link', form.deliverable_link || '');
+        fd.append('refund_policy_days', String(form.refund_policy_days ?? 7));
         fd.append('_method', 'PUT');
         fd.append('image', form.image);
         form.transform(() => fd).post(url, { forceFormData: true });
@@ -1383,6 +1387,22 @@ function submit() {
                     </div>
                 </section>
                 </div>
+
+                <section class="mx-auto w-full max-w-3xl space-y-4 rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/95 xl:max-w-6xl">
+                    <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Política de reembolso</h2>
+                    <p class="text-sm text-zinc-600 dark:text-zinc-400">
+                        Prazo em que o cliente pode solicitar reembolso após a compra aprovada (obrigatório: 7, 14 ou 30 dias).
+                    </p>
+                    <div>
+                        <label class="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Janela de solicitação *</label>
+                        <select v-model.number="form.refund_policy_days" required :class="inputClass" class="max-w-md">
+                            <option :value="7">7 dias</option>
+                            <option :value="14">14 dias</option>
+                            <option :value="30">30 dias</option>
+                        </select>
+                        <p v-if="form.errors.refund_policy_days" class="mt-1.5 text-sm text-red-600 dark:text-red-400">{{ form.errors.refund_policy_days }}</p>
+                    </div>
+                </section>
 
                 <div class="flex flex-wrap items-center gap-3">
                     <Button type="submit" :disabled="form.processing">{{ t('products.edit.save_changes', 'Salvar alterações') }}</Button>

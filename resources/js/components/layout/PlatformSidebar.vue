@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import {
     LayoutDashboard,
     Users,
+    UserCircle2,
     Shield,
     PanelRightOpen,
     X,
@@ -29,6 +30,7 @@ const hasLogoIcon = () => !!(appSettings().app_logo_icon || appSettings().app_lo
 const navItems = [
     { name: 'Dashboard', href: '/plataforma/dashboard', icon: LayoutDashboard },
     { name: 'Infoprodutores', href: '/plataforma/usuarios', icon: Users },
+    { name: 'Clientes', href: '/plataforma/clientes', icon: UserCircle2 },
     { name: 'Transações', href: '/plataforma/transacoes', icon: ArrowLeftRight },
     { name: 'Verificações KYC', href: '/plataforma/verificacoes-kyc', icon: BadgeCheck },
     { name: 'Saques', href: '/plataforma/saques', icon: Banknote },
@@ -46,6 +48,9 @@ function isActive(href) {
     }
     if (href === '/plataforma/transacoes') {
         return url === '/plataforma/transacoes' || url.startsWith('/plataforma/transacoes/');
+    }
+    if (href === '/plataforma/clientes') {
+        return url === '/plataforma/clientes' || url.startsWith('/plataforma/clientes/');
     }
     if (href === '/plataforma/verificacoes-kyc') {
         return url === '/plataforma/verificacoes-kyc' || url.startsWith('/plataforma/verificacoes-kyc/');

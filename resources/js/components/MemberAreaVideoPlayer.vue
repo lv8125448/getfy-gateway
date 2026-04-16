@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { getVideoProviderType } from '@/lib/utils';
+import { Maximize2 } from 'lucide-vue-next';
 
 const props = defineProps({
     src: { type: String, default: '' },
@@ -24,12 +25,23 @@ const isEmbedProvider = computed(() => {
     return t === 'youtube' || t === 'vimeo';
 });
 const isMobile = ref(false);
+const isIphoneSafari = ref(false);
 let mobileMql = null;
 function onMobileQueryChange(e) {
     isMobile.value = !!e.matches;
 }
 const playerRef = ref(null);
 let onFullscreenChangeHandler = null;
+
+function detectIphoneSafari() {
+    if (typeof navigator === 'undefined') return false;
+    const ua = String(navigator.userAgent || '');
+    // iPhone Safari: exclui browsers iOS com UA próprio (Chrome/Firefox/Edge) e webviews comuns.
+    const isIphone = /\biPhone\b/i.test(ua);
+    const isSafari = /Safari/i.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo)/i.test(ua);
+    const isWebView = /(FBAN|FBAV|Instagram|Line|WhatsApp|GSA)/i.test(ua) || (!/Safari/i.test(ua) && /AppleWebKit/i.test(ua));
+    return isIphone && isSafari && !isWebView;
+}
 
 async function lockOrientationLandscape() {
     try {
@@ -91,6 +103,7 @@ const watermarkText = computed(() => {
 });
 
 onMounted(() => {
+    isIphoneSafari.value = detectIphoneSafari();
     if (typeof window !== 'undefined' && 'matchMedia' in window) {
         mobileMql = window.matchMedia('(max-width: 768px)');
         isMobile.value = !!mobileMql.matches;
@@ -145,6 +158,27 @@ const effectivePlaysinline = computed(() => {
     return !isMobile.value;
 });
 
+const showFullscreenOverlay = computed(() => {
+    // iPhone Safari + YouTube: botão de fullscreen pode não aparecer no layout.
+    return isIphoneSafari.value && isMobile.value && providerType.value === 'youtube' && !!props.src;
+});
+
+async function requestProviderFullscreen() {
+    const el = playerRef.value;
+    if (!el) return;
+    try {
+        // Vidstack 1.x: método no elemento <media-player>.
+        if (typeof el.enterFullscreen === 'function') {
+            await el.enterFullscreen('provider');
+            return;
+        }
+        // Fallback: evento (caso a instância não exponha o método).
+        el.dispatchEvent(new CustomEvent('media-enter-fullscreen-request', { bubbles: true, composed: true }));
+    } catch (_) {
+        // Silencioso: no iOS o provider pode bloquear a request fora de gesto.
+    }
+}
+
 function onEnded() {
     emit('ended');
 }
@@ -159,6 +193,16 @@ function onContextMenu(e) {
         class="member-area-video-player aspect-video w-full overflow-hidden rounded-lg bg-black relative"
         @contextmenu.prevent="onContextMenu"
     >
+        <button
+            v-if="showFullscreenOverlay"
+            type="button"
+            class="fullscreen-overlay-btn"
+            aria-label="Tela cheia"
+            @click.stop.prevent="requestProviderFullscreen"
+        >
+            <Maximize2 class="h-4 w-4" aria-hidden="true" />
+            <span class="sr-only">Tela cheia</span>
+        </button>
         <media-player
             v-if="src"
             ref="playerRef"
@@ -205,6 +249,31 @@ function onContextMenu(e) {
 }
 .player[data-view-type='video'] {
     aspect-ratio: 16 / 9;
+}
+/* iPhone Safari (YouTube): botão overlay p/ fullscreen do provider */
+.fullscreen-overlay-btn {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 36px;
+    width: 36px;
+    border-radius: 9999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    backdrop-filter: blur(6px);
+}
+.fullscreen-overlay-btn:active {
+    transform: scale(0.98);
+}
+.fullscreen-overlay-btn:focus-visible {
+    outline: 2px solid rgba(78, 156, 246, 0.9);
+    outline-offset: 2px;
 }
 /* Poster por cima do iframe do YouTube até o usuário dar play */
 .player :deep(.vds-poster),

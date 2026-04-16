@@ -18,9 +18,9 @@ services:
       PORT: "80"
       APP_INSTALLED: ${GETFY_APP_INSTALLED:-true}
       APP_AUTO_MIGRATE: ${GETFY_APP_AUTO_MIGRATE:-false}
-      DB_CONNECTION: ${GETFY_DB_CONNECTION:-mysql}
-      DB_HOST: ${GETFY_DB_HOST:-mysql}
-      DB_PORT: ${GETFY_DB_PORT:-3306}
+      DB_CONNECTION: ${GETFY_DB_CONNECTION:-pgsql}
+      DB_HOST: ${GETFY_DB_HOST:-postgres}
+      DB_PORT: ${GETFY_DB_PORT:-5432}
       DB_DATABASE: ${GETFY_DB_DATABASE:-getfy}
       DB_USERNAME: ${GETFY_DB_USERNAME:-getfy}
       DB_PASSWORD: ${GETFY_DB_PASSWORD:-getfy}
@@ -32,31 +32,22 @@ services:
       GETFY_DOCKER: "true"
       GETFY_RUN_SETUP: "true"
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
-  mysql:
-    image: mysql:8.0
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
-    command:
-      - "--innodb-buffer-pool-size=${GETFY_MYSQL_INNODB_BUFFER_POOL_SIZE:-256M}"
-      - "--innodb-log-file-size=${GETFY_MYSQL_INNODB_LOG_FILE_SIZE:-64M}"
-      - "--innodb-buffer-pool-instances=${GETFY_MYSQL_INNODB_BUFFER_POOL_INSTANCES:-1}"
-      - "--max-connections=${GETFY_MYSQL_MAX_CONNECTIONS:-50}"
-      - "--table-open-cache=${GETFY_MYSQL_TABLE_OPEN_CACHE:-200}"
-      - "--thread-cache-size=${GETFY_MYSQL_THREAD_CACHE_SIZE:-16}"
     environment:
-      MYSQL_ROOT_PASSWORD: ${GETFY_MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${GETFY_MYSQL_DATABASE:-${GETFY_DB_DATABASE:-getfy}}
-      MYSQL_USER: ${GETFY_MYSQL_USER:-${GETFY_DB_USERNAME:-getfy}}
-      MYSQL_PASSWORD: ${GETFY_MYSQL_PASSWORD:-${GETFY_DB_PASSWORD:-getfy}}
-      MYSQL_INITDB_SKIP_TZINFO: ${GETFY_MYSQL_SKIP_TZINFO:-1}
+      POSTGRES_DB: ${GETFY_DB_DATABASE:-getfy}
+      POSTGRES_USER: ${GETFY_DB_USERNAME:-getfy}
+      POSTGRES_PASSWORD: ${GETFY_DB_PASSWORD:-getfy}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -93,9 +84,9 @@ services:
       GETFY_WEBHOOK_PUBLIC_URL: ${GETFY_WEBHOOK_PUBLIC_URL:-}
       APP_INSTALLED: ${GETFY_APP_INSTALLED:-true}
       APP_AUTO_MIGRATE: ${GETFY_APP_AUTO_MIGRATE:-false}
-      DB_CONNECTION: ${GETFY_DB_CONNECTION:-mysql}
-      DB_HOST: ${GETFY_DB_HOST:-mysql}
-      DB_PORT: ${GETFY_DB_PORT:-3306}
+      DB_CONNECTION: ${GETFY_DB_CONNECTION:-pgsql}
+      DB_HOST: ${GETFY_DB_HOST:-postgres}
+      DB_PORT: ${GETFY_DB_PORT:-5432}
       DB_DATABASE: ${GETFY_DB_DATABASE:-getfy}
       DB_USERNAME: ${GETFY_DB_USERNAME:-getfy}
       DB_PASSWORD: ${GETFY_DB_PASSWORD:-getfy}
@@ -107,13 +98,13 @@ services:
       GETFY_DOCKER: "true"
       GETFY_RUN_SETUP: "false"
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
 volumes:
-  mysql_data:
+  postgres_data:
     driver: local
   getfy_storage:
     driver: local

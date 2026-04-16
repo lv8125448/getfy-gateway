@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 
 const page = usePage();
 const dropdownOpen = ref(false);
@@ -10,6 +10,34 @@ const dropdownRef = ref(null);
 
 const user = computed(() => page.props.auth?.user ?? null);
 const isPlatformAdmin = computed(() => !!page.props.auth?.is_platform_admin);
+const customerPanel = computed(() => !!page.props.customer_panel);
+const panelSwitch = computed(() => user.value?.panel_switch ?? {});
+
+/** Compras/aluno: mostrar no painel do vendedor mesmo se panel_switch vier incompleto do backend. */
+const showPainelAluno = computed(() => {
+    if (!user.value || isPlatformAdmin.value) return false;
+    if (customerPanel.value) return false;
+    if (panelSwitch.value?.customer) return true;
+    const r = user.value.role;
+    return r === 'infoprodutor' || r === 'team';
+});
+
+/** Voltar ao painel do vendedor quando está em /painel-cliente ou /area-membros. */
+const showPainelInfoprodutor = computed(() => {
+    if (!user.value || isPlatformAdmin.value) return false;
+    if (!customerPanel.value) return false;
+    if (panelSwitch.value?.seller) return true;
+    const r = user.value.role;
+    return r === 'infoprodutor' || r === 'team';
+});
+
+function switchToCustomer() {
+    router.post('/painel/trocar', { to: 'customer' });
+}
+
+function switchToSeller() {
+    router.post('/painel/trocar', { to: 'seller' });
+}
 
 const initials = computed(() => {
     if (!user.value?.name) return '?';
@@ -81,7 +109,7 @@ onUnmounted(() => {
 
         <div
             v-if="dropdownOpen"
-            class="absolute right-0 z-50 mt-2 w-56 flex flex-col rounded-xl border border-zinc-200 bg-white p-3 shadow-[var(--shadow-theme-sm)] dark:border-zinc-800 dark:bg-zinc-900"
+            class="absolute right-0 z-50 mt-2 w-[min(100vw-2rem,18rem)] flex flex-col rounded-xl border border-zinc-200 bg-white p-3 shadow-[var(--shadow-theme-sm)] dark:border-zinc-800 dark:bg-zinc-900"
         >
             <div class="border-b border-zinc-200 pb-3 dark:border-zinc-800">
                 <p class="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
@@ -91,6 +119,24 @@ onUnmounted(() => {
                     {{ user.email }}
                 </p>
             </div>
+            <button
+                v-if="showPainelAluno"
+                type="button"
+                class="mt-2 flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                @click="switchToCustomer(); closeDropdown()"
+            >
+                <span>Painel do aluno</span>
+                <span class="text-xs font-normal text-zinc-500 dark:text-zinc-400">Minhas compras e área de membros</span>
+            </button>
+            <button
+                v-if="showPainelInfoprodutor"
+                type="button"
+                class="mt-2 flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                @click="switchToSeller(); closeDropdown()"
+            >
+                <span>Painel do infoprodutor</span>
+                <span class="text-xs font-normal text-zinc-500 dark:text-zinc-400">Dashboard, vendas e produtos</span>
+            </button>
             <Link
                 v-if="!isPlatformAdmin && (user.role === 'infoprodutor' || user.role === 'admin' || user.role === 'team')"
                 href="/meu-perfil"

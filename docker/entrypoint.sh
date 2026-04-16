@@ -139,15 +139,27 @@ foreach ($vars as $key => $value) {
 file_put_contents($envFile, $content);
 '
 
-DB_HOST="${DB_HOST:-mysql}"
-DB_PORT="${DB_PORT:-3306}"
+DB_CONNECTION="${DB_CONNECTION:-pgsql}"
 DB_DATABASE="${DB_DATABASE:-getfy}"
-DB_USERNAME="${DB_USERNAME:-${MYSQL_USER:-getfy}}"
-DB_PASSWORD="${DB_PASSWORD:-${MYSQL_PASSWORD:-getfy}}"
+DB_USERNAME="${DB_USERNAME:-getfy}"
+DB_PASSWORD="${DB_PASSWORD:-getfy}"
+
+if [ "$DB_CONNECTION" = "pgsql" ]; then
+  DB_HOST="${DB_HOST:-postgres}"
+  DB_PORT="${DB_PORT:-5432}"
+else
+  DB_HOST="${DB_HOST:-mysql}"
+  DB_PORT="${DB_PORT:-3306}"
+fi
 
 DB_OK=0
 for i in $(seq 1 60); do
-  if php -r "try { new PDO('mysql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_DATABASE}', '${DB_USERNAME}', '${DB_PASSWORD}', [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); } catch (Throwable \$e) { exit(1); }" >/dev/null 2>&1; then
+  if [ "$DB_CONNECTION" = "pgsql" ]; then
+    DSN="pgsql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_DATABASE}"
+  else
+    DSN="mysql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_DATABASE}"
+  fi
+  if php -r "try { new PDO('${DSN}', '${DB_USERNAME}', '${DB_PASSWORD}', [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); } catch (Throwable \$e) { exit(1); }" >/dev/null 2>&1; then
     DB_OK=1
     break
   fi
@@ -155,7 +167,7 @@ for i in $(seq 1 60); do
 done
 
 if [ "$DB_OK" -ne 1 ]; then
-  echo "MySQL indisponível. Verifique DB_HOST/DB_PORT e o serviço mysql no compose."
+  echo "Banco indisponível (DB_CONNECTION=${DB_CONNECTION}). Verifique DB_HOST/DB_PORT e o serviço do banco no compose."
   exit 1
 fi
 

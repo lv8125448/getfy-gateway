@@ -1012,8 +1012,8 @@ class MemberBuilderController extends Controller
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
-            'role' => User::ROLE_ALUNO,
-            'tenant_id' => $produto->tenant_id,
+            'role' => User::ROLE_CLIENTE,
+            'tenant_id' => null,
         ]);
         $produto->users()->attach($user->id);
         if ($turmaId) {

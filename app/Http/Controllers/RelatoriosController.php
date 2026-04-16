@@ -44,7 +44,7 @@ class RelatoriosController extends Controller
         $reembolsosCount = $ordersRefunded->count();
         $reembolsosTotal = (float) $ordersRefunded->sum('amount');
 
-        $totalAlunos = User::where('role', User::ROLE_ALUNO)
+        $totalAlunos = User::whereIn('role', User::buyerRoleValues())
             ->whereHas('products', fn ($q) => $tenantId === null ? $q->whereNull('tenant_id') : $q->where('tenant_id', $tenantId))
             ->count();
         $totalProdutos = Product::forTenant($tenantId)->count();

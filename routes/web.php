@@ -78,6 +78,10 @@ Route::get('/', function (\Illuminate\Http\Request $request) {
             return redirect('/dashboard');
         }
 
+        if ($user->canAccessCustomerPanel()) {
+            return redirect('/painel-cliente');
+        }
+
         return redirect('/area-membros');
     }
 
@@ -154,13 +158,14 @@ Route::get('/conquistas/{slug}/share', [\App\Http\Controllers\ConquistasControll
     ->name('conquistas.share')
     ->where('slug', '[a-z0-9-]+');
 
+Route::post('/cadastro', [\App\Http\Controllers\InfoprodutorRegistrationController::class, 'store'])->middleware('throttle:10,1');
+Route::post('/cadastro/validar-email', [\App\Http\Controllers\InfoprodutorRegistrationController::class, 'validateEmail'])->middleware('throttle:30,1');
+Route::post('/cadastro/validar-documento', [\App\Http\Controllers\InfoprodutorRegistrationController::class, 'validateDocument'])->middleware('throttle:30,1');
+
 Route::middleware('guest')->group(function () {
     Route::get('/criar-admin', [\App\Http\Controllers\CreateFirstAdminController::class, 'show'])->name('criar-admin');
     Route::post('/criar-admin', [\App\Http\Controllers\CreateFirstAdminController::class, 'store'])->middleware('throttle:5,1');
     Route::get('/cadastro', [\App\Http\Controllers\InfoprodutorRegistrationController::class, 'create'])->name('cadastro');
-    Route::post('/cadastro', [\App\Http\Controllers\InfoprodutorRegistrationController::class, 'store'])->middleware('throttle:10,1');
-    Route::post('/cadastro/validar-email', [\App\Http\Controllers\InfoprodutorRegistrationController::class, 'validateEmail'])->middleware('throttle:30,1');
-    Route::post('/cadastro/validar-documento', [\App\Http\Controllers\InfoprodutorRegistrationController::class, 'validateDocument'])->middleware('throttle:30,1');
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:5,1');
     Route::get('/esqueci-senha', [ForgotPasswordController::class, 'showLinkRequestForm'])->name('password.request');
@@ -171,6 +176,7 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->name('logout');
+    Route::get('/cadastro/infoprodutor', [\App\Http\Controllers\InfoprodutorRegistrationController::class, 'createUpgrade'])->name('cadastro.infoprodutor');
 });
 
 Route::prefix('plataforma')->name('plataforma.')->group(function () {
@@ -247,6 +253,7 @@ Route::prefix('plataforma')->name('plataforma.')->group(function () {
 
         Route::get('/saques', [\App\Http\Controllers\Platform\WithdrawalsController::class, 'index'])->name('saques.index');
         Route::get('/transacoes', [\App\Http\Controllers\Platform\TransactionsController::class, 'index'])->name('transacoes.index');
+        Route::get('/clientes', [\App\Http\Controllers\Platform\CustomersController::class, 'index'])->name('clientes.index');
         Route::post('/transacoes/pedidos/{order}/aprovar-manualmente', [\App\Http\Controllers\Platform\TransactionsController::class, 'approveManualOrder'])
             ->name('transacoes.pedidos.approve-manual')
             ->middleware('throttle:10,1');
@@ -385,6 +392,16 @@ Route::middleware(['auth', 'admin.tenant', 'seller.panel', 'role:infoprodutor|te
     Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, '__invoke'])
         ->middleware('team.permission:dashboard.view')
         ->name('dashboard');
+
+    Route::get('/reembolsos', [\App\Http\Controllers\SellerRefundRequestsController::class, 'index'])
+        ->middleware('team.permission:vendas.view')
+        ->name('reembolsos.index');
+    Route::post('/reembolsos/{refundRequest}/aprovar', [\App\Http\Controllers\SellerRefundRequestsController::class, 'approve'])
+        ->middleware(['throttle:30,1', 'team.permission:vendas.view'])
+        ->name('reembolsos.approve');
+    Route::post('/reembolsos/{refundRequest}/recusar', [\App\Http\Controllers\SellerRefundRequestsController::class, 'reject'])
+        ->middleware(['throttle:30,1', 'team.permission:vendas.view'])
+        ->name('reembolsos.reject');
 
     Route::get('/kyc', [\App\Http\Controllers\SellerKycController::class, 'show'])->name('kyc.upload');
     Route::post('/kyc', [\App\Http\Controllers\SellerKycController::class, 'store'])->middleware('throttle:15,1')->name('kyc.store');
@@ -579,9 +596,13 @@ Route::middleware(['auth'])->group(function () {
     })->where('path', '.*');
 });
 
-Route::middleware(['auth', 'role:aluno'])->group(function () {
+Route::middleware(['auth', 'customer.panel'])->group(function () {
     Route::get('/area-membros', [\App\Http\Controllers\MemberAreaController::class, 'index'])->name('member-area.index');
+    Route::get('/painel-cliente', [\App\Http\Controllers\CustomerPanelController::class, 'index'])->name('painel-cliente.index');
+    Route::post('/painel-cliente/reembolso', [\App\Http\Controllers\CustomerPanelController::class, 'requestRefund'])->name('painel-cliente.refund')->middleware('throttle:20,1');
 });
+
+Route::post('/painel/trocar', [\App\Http\Controllers\PanelSwitchController::class, 'switch'])->middleware(['auth', 'throttle:30,1'])->name('panel.switch');
 
 // Área de membros por produto (path: /m/{slug})
 Route::prefix('m/{slug}')->where(['slug' => '[a-zA-Z0-9]{6,16}'])->middleware('member.area.resolve')->group(function () {

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Order extends Model
 {
     protected $fillable = [
+        'public_reference',
         'tenant_id', 'user_id', 'product_id', 'product_offer_id', 'subscription_plan_id',
         'api_application_id', 'api_checkout_session_id',
         'status', 'amount', 'email', 'cpf', 'phone', 'customer_ip', 'coupon_code',
@@ -26,6 +28,26 @@ class Order extends Model
             'is_renewal' => 'boolean',
             'approved_manually' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Order $order) {
+            if ($order->public_reference !== null && $order->public_reference !== '') {
+                return;
+            }
+            $order->public_reference = static::newUniquePublicReference();
+        });
+    }
+
+    /** Código público do pedido (não sequencial), para exibir ao cliente. */
+    public static function newUniquePublicReference(): string
+    {
+        do {
+            $ref = strtoupper(Str::random(10));
+        } while (static::query()->where('public_reference', $ref)->exists());
+
+        return $ref;
     }
 
     public function user(): BelongsTo
@@ -67,6 +89,11 @@ class Order extends Model
     public function checkoutSession(): HasOne
     {
         return $this->hasOne(CheckoutSession::class);
+    }
+
+    public function refundRequests(): HasMany
+    {
+        return $this->hasMany(RefundRequest::class);
     }
 
     /**

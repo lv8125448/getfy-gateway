@@ -92,6 +92,7 @@ Como configurar:
 ## Instalação em VPS (recomendado) — instalador automático via SSH
 
 Este modo instala e sobe tudo via Docker (app + banco + redis + scheduler).
+O banco padrão do stack Docker é **PostgreSQL**.
 
 ### 1) Rodar o instalador
 
@@ -137,7 +138,7 @@ Este modo é para quando você usa um painel que permite “Criar aplicação a 
 
 1. No painel da Hostinger, escolha criar uma nova aplicação a partir de um repositório (Git/URL).
 2. Cole a URL do repositório do GitHub.
-3. Se o painel pedir qual arquivo usar, prefira `docker-compose.yml` (recomendado, pois sobe banco + redis + scheduler junto) e ative o modo “Docker Compose” se existir.
+3. Se o painel pedir qual arquivo usar, prefira `docker-compose.yml` (recomendado, pois sobe app + PostgreSQL + redis + scheduler) e ative o modo “Docker Compose” se existir.
 
 ### 2) Portas e persistência
 

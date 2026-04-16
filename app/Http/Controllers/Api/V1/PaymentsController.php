@@ -14,6 +14,7 @@ use App\Models\Product;
 use App\Models\ProductOffer;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
+use App\Services\BuyerAccountService;
 use App\Services\PaymentService;
 use App\Support\FakeConsumerData;
 use Illuminate\Http\JsonResponse;
@@ -75,15 +76,13 @@ class PaymentsController extends Controller
         if ($name === '') {
             $name = $email;
         }
-        $user = User::firstOrCreate(
-            ['email' => $email],
-            [
-                'name' => $name,
-                'password' => bcrypt(Str::random(32)),
-                'role' => User::ROLE_ALUNO,
-                'tenant_id' => $app->tenant_id,
-            ]
+        $buyer = app(BuyerAccountService::class)->ensureBuyerFromCheckout(
+            $email,
+            $name,
+            bcrypt(Str::random(32)),
+            false,
         );
+        $user = $buyer['user'];
         return [
             'user' => $user,
             'consumer' => [

@@ -265,11 +265,11 @@ function scrollCarousel(sectionId, direction) {
                             >
                                 <CheckCircle v-if="isLessonCompleted(lesson)" class="h-4 w-4 shrink-0 text-emerald-500" />
                                 <span v-else class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-500 text-xs">{{ lessons.indexOf(lesson) + 1 }}</span>
-                                <span class="min-w-0 flex-1 truncate">{{ lesson.title || 'Sem título' }}</span>
+                                <span class="min-w-0 flex-1 break-words whitespace-normal leading-snug line-clamp-2">{{ lesson.title || 'Sem título' }}</span>
                             </Link>
                             <div v-else class="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm opacity-70">
                                 <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-zinc-600 text-xs">{{ lessons.indexOf(lesson) + 1 }}</span>
-                                <span class="min-w-0 flex-1 truncate text-zinc-400">{{ lesson.title || 'Sem título' }}</span>
+                                <span class="min-w-0 flex-1 break-words whitespace-normal leading-snug line-clamp-2 text-zinc-400">{{ lesson.title || 'Sem título' }}</span>
                                 <span v-if="lesson.lock_message" class="shrink-0 text-[10px] text-zinc-500">{{ lesson.lock_message }}</span>
                             </div>
                         </template>
