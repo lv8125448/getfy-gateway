@@ -1,13 +1,14 @@
 FROM php:8.2-cli-alpine AS php_base
 
 RUN apk add --no-cache \
-    git unzip libzip-dev libpng-dev oniguruma-dev \
+    git unzip libzip-dev libpng-dev libjpeg-turbo-dev freetype-dev oniguruma-dev \
     postgresql-client postgresql-dev icu-dev libxml2-dev $PHPIZE_DEPS
 
 RUN pecl install redis \
     && docker-php-ext-enable redis
 
-RUN docker-php-ext-install pdo_pgsql zip exif intl opcache pcntl bcmath
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd pdo_pgsql zip exif intl opcache pcntl bcmath
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
