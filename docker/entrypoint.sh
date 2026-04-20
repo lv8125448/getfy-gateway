@@ -89,14 +89,15 @@ $appUrl = $setupDone ? ($sharedAppUrl !== "" ? $sharedAppUrl : $existingAppUrl) 
 $parts = parse_url((string) $appUrl);
 $scheme = strtolower((string) ($parts["scheme"] ?? ""));
 $host = strtolower((string) ($parts["host"] ?? ""));
-// Só "sobe" HTTP -> HTTPS automaticamente para hostnames (não-IP).
-// Motivo: acesso inicial por IP público costuma ser HTTP (:80). Forçar https://IP quebra cookies Secure e gera 419 no POST.
-if ($scheme === "http" && $host !== "" && $host !== "localhost" && $host !== "127.0.0.1" && $host !== "::1" && filter_var($host, FILTER_VALIDATE_IP) === false) {
+// Só "sobe" HTTP -> HTTPS automaticamente para hostnames (não-IP) **após** o docker-setup.
+// Antes do setup, o acesso costuma ser http://IP:porta (sem SSL). Promover APP_URL para https://hostname
+// e SESSION_SECURE_COOKIE=true quebra a sessão no POST (419 Page Expired).
+if ($setupDone && $scheme === "http" && $host !== "" && $host !== "localhost" && $host !== "127.0.0.1" && $host !== "::1" && filter_var($host, FILTER_VALIDATE_IP) === false) {
     $appUrl = "https://" . $host;
 }
 $parts = parse_url((string) $appUrl);
 $scheme = strtolower((string) ($parts["scheme"] ?? ""));
-$sessionSecure = $scheme === "https";
+$sessionSecure = $setupDone && ($scheme === "https");
 $vars = [
     "APP_NAME" => getenv("APP_NAME") ?: "Getfy",
     "APP_ENV" => getenv("APP_ENV") ?: "local",
