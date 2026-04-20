@@ -178,10 +178,16 @@ if [ "$DB_OK" -ne 1 ]; then
   exit 1
 fi
 
+# Dependências precisam existir em *todo* container da mesma imagem (app, queue, etc.).
+# O serviço "queue" usa GETFY_RUN_SETUP=false: sem isto, só o "app" rodaria composer install
+# na camada efêmera dele e o worker reiniciaria em loop (vendor ausente).
+GETFY_VENDOR_JUST_INSTALLED=0
+if [ ! -f vendor/autoload.php ]; then
+  composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
+  GETFY_VENDOR_JUST_INSTALLED=1
+fi
+
 if [ "${GETFY_RUN_SETUP:-true}" = "true" ]; then
-  if [ ! -f vendor/autoload.php ]; then
-    composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
-  fi
   php artisan package:discover --ansi
   php artisan migrate --force
   if ! php -r '
@@ -199,6 +205,8 @@ exit(\App\Support\VapidEnvKeys::normalizedPairLooksValid($pub, $priv) ? 0 : 1);
 ' >/dev/null 2>&1; then
     php artisan pwa:vapid || true
   fi
+elif [ "$GETFY_VENDOR_JUST_INSTALLED" = "1" ]; then
+  php artisan package:discover --ansi
 fi
 
 # Persiste VAPID em arquivo compartilhado no volume .docker para que "queue" e "app" usem as mesmas chaves.
