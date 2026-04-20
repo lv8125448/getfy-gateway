@@ -226,6 +226,11 @@ onMounted(() => {
 watch(activeTab, (id) => {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', id);
+    if (id !== 'modulos') {
+        url.searchParams.delete('module');
+    } else if (modulosSelectedModuleId.value) {
+        url.searchParams.set('module', String(modulosSelectedModuleId.value));
+    }
     window.history.replaceState({}, '', url.toString());
 }, { immediate: false });
 // Persist selected tab in localStorage as fallback
@@ -526,9 +531,42 @@ const modulosSelectedModule = computed(() => {
     return null;
 });
 
+onMounted(() => {
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get('tab');
+    const moduleParam = p.get('module');
+    if (!moduleParam || t !== 'modulos') return;
+
+    const moduleId = Number.isNaN(Number(moduleParam)) ? moduleParam : Number(moduleParam);
+    const exists = (props.produto.sections ?? []).some((section) =>
+        (section.modules ?? []).some((mod) => mod.id === moduleId)
+    );
+    if (exists) {
+        modulosSelectedModuleId.value = moduleId;
+    }
+});
+
+watch(modulosSelectedModuleId, (moduleId) => {
+    if (activeTab.value !== 'modulos') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'modulos');
+    if (moduleId) {
+        url.searchParams.set('module', String(moduleId));
+    } else {
+        url.searchParams.delete('module');
+    }
+    window.history.replaceState({}, '', url.toString());
+});
+
 function selectModuleForAulas(moduleId) {
     modulosSelectedModuleId.value = moduleId;
     modulosLessonForm.value = null;
+
+    const section = props.produto.sections?.find((s) => s.modules?.some((m) => m.id === moduleId));
+    if (section?.id) {
+        expandedSections.value = new Set([...expandedSections.value, section.id]);
+    }
+    expandedModules.value = new Set([...expandedModules.value, moduleId]);
 }
 
 function openModulosLessonForm(lesson) {

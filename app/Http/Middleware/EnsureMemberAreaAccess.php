@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Product;
+use App\Models\Subscription;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -36,6 +38,21 @@ class EnsureMemberAreaAccess
         }
 
         if (! $product->hasMemberAreaAccess($request->user())) {
+            if ($product instanceof Product && ($product->billing_type ?? Product::BILLING_ONE_TIME) === Product::BILLING_SUBSCRIPTION) {
+                $subscription = Subscription::query()
+                    ->with('subscriptionPlan')
+                    ->where('user_id', $request->user()->id)
+                    ->where('product_id', $product->id)
+                    ->whereIn('status', [Subscription::STATUS_ACTIVE, Subscription::STATUS_PAST_DUE])
+                    ->orderByDesc('current_period_end')
+                    ->first();
+
+                if ($subscription && ! $subscription->subscriptionPlan?->isLifetime() && ! empty($subscription->renewal_token)) {
+                    return redirect()->to(url('/renovar/'.$subscription->renewal_token))
+                        ->with('error', 'Sua assinatura venceu. Renove para recuperar o acesso.');
+                }
+            }
+
             return redirect()->route('checkout.show', ['slug' => $product->checkout_slug])
                 ->with('error', 'Você não tem acesso a esta área. Adquira o produto para continuar.');
         }

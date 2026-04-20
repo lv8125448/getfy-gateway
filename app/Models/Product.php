@@ -618,7 +618,29 @@ class Product extends Model
         if (($user->isAdmin() || $user->isInfoprodutor()) && $user->tenant_id === $this->tenant_id) {
             return true;
         }
-        return $this->users()->where('user_id', $user->id)->exists();
+        $hasProductAccess = $this->users()->where('user_id', $user->id)->exists();
+        if (! $hasProductAccess) {
+            return false;
+        }
+
+        if (($this->billing_type ?? self::BILLING_ONE_TIME) !== self::BILLING_SUBSCRIPTION) {
+            return true;
+        }
+
+        $today = now()->startOfDay();
+
+        return Subscription::query()
+            ->where('user_id', $user->id)
+            ->where('product_id', $this->id)
+            ->where('status', Subscription::STATUS_ACTIVE)
+            ->where(function ($q) use ($today) {
+                $q->whereDate('current_period_end', '>=', $today->toDateString())
+                    ->orWhere(function ($q2) {
+                        $q2->whereNull('current_period_end')
+                            ->whereHas('subscriptionPlan', fn ($plan) => $plan->where('interval', SubscriptionPlan::INTERVAL_LIFETIME));
+                    });
+            })
+            ->exists();
     }
 
     /**

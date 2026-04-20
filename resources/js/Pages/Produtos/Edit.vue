@@ -162,6 +162,7 @@ const form = useForm({
         subject: et.subject ?? DEFAULT_EMAIL_TEMPLATE.subject,
         body_html: et.body_html ?? DEFAULT_EMAIL_TEMPLATE.body_html,
     },
+    refund_enabled: props.produto.refund_policy_days !== null && props.produto.refund_policy_days !== undefined,
     refund_policy_days: [7, 14, 30].includes(Number(props.produto.refund_policy_days))
         ? Number(props.produto.refund_policy_days)
         : 7,
@@ -1029,7 +1030,11 @@ function submit() {
             fd.append('email_template[body_html]', form.email_template.body_html || '');
         }
         fd.append('deliverable_link', form.deliverable_link || '');
-        fd.append('refund_policy_days', String(form.refund_policy_days ?? 7));
+        if (form.refund_enabled) {
+            fd.append('refund_policy_days', String(form.refund_policy_days ?? 7));
+        } else {
+            fd.append('refund_policy_days', '');
+        }
         fd.append('_method', 'PUT');
         fd.append('image', form.image);
         form.transform(() => fd).post(url, { forceFormData: true });
@@ -1038,6 +1043,7 @@ function submit() {
             if (data.billing_type === 'subscription') {
                 data.base_interval = data.base_interval || 'monthly';
             }
+            data.refund_policy_days = data.refund_enabled ? Number(data.refund_policy_days || 7) : null;
             return data;
         }).put(url);
     }
@@ -1391,15 +1397,22 @@ function submit() {
                 <section class="mx-auto w-full max-w-3xl space-y-4 rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/95 xl:max-w-6xl">
                     <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Política de reembolso</h2>
                     <p class="text-sm text-zinc-600 dark:text-zinc-400">
-                        Prazo em que o cliente pode solicitar reembolso após a compra aprovada (obrigatório: 7, 14 ou 30 dias).
+                        Configure se este produto aceita reembolso e a janela de solicitação para o comprador.
                     </p>
+                    <label class="inline-flex items-center gap-3 text-sm text-zinc-700 dark:text-zinc-300">
+                        <input v-model="form.refund_enabled" type="checkbox" class="h-4 w-4 rounded border-zinc-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)] dark:border-zinc-600 dark:bg-zinc-900" />
+                        Permitir solicitação de reembolso
+                    </label>
                     <div>
-                        <label class="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Janela de solicitação *</label>
-                        <select v-model.number="form.refund_policy_days" required :class="inputClass" class="max-w-md">
+                        <label class="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Janela de solicitação</label>
+                        <select v-model.number="form.refund_policy_days" :disabled="!form.refund_enabled" :required="form.refund_enabled" :class="inputClass" class="max-w-md disabled:cursor-not-allowed disabled:opacity-60">
                             <option :value="7">7 dias</option>
                             <option :value="14">14 dias</option>
                             <option :value="30">30 dias</option>
                         </select>
+                        <p v-if="!form.refund_enabled" class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                            Com reembolso desativado, o cliente nao vera a opcao de solicitar reembolso no painel de compras.
+                        </p>
                         <p v-if="form.errors.refund_policy_days" class="mt-1.5 text-sm text-red-600 dark:text-red-400">{{ form.errors.refund_policy_days }}</p>
                     </div>
                 </section>

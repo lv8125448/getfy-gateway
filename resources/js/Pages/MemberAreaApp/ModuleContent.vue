@@ -47,6 +47,30 @@ let autoCompleteTimer = null;
 
 const isLessonCompleted = (lesson) => lesson.is_completed || completedLessonIds.value.has(lesson.id);
 
+const isCurrentLessonCompleted = (lesson) => {
+    if (!lesson) return false;
+    if (props.current_lesson?.id === lesson.id) {
+        return Boolean(lesson.is_completed || completed.value || completedLessonIds.value.has(lesson.id));
+    }
+    return isLessonCompleted(lesson);
+};
+
+const allLessonsCompleted = computed(() => {
+    if (!Array.isArray(props.lessons) || props.lessons.length === 0) return false;
+    return props.lessons.every((lesson) => isCurrentLessonCompleted(lesson));
+});
+
+const nextUnlockedModule = computed(() => {
+    const modules = (props.sections ?? []).flatMap((section) => section.modules ?? []);
+    const currentIndex = modules.findIndex((mod) => mod.id === props.module?.id);
+    if (currentIndex < 0) return null;
+    for (let i = currentIndex + 1; i < modules.length; i += 1) {
+        const candidate = modules[i];
+        if (!candidate?.is_locked) return candidate;
+    }
+    return null;
+});
+
 function lessonUrl(lessonId) {
     return `/m/${props.slug}/modulo/${props.module.id}?aula=${lessonId}`;
 }
@@ -200,9 +224,20 @@ function scrollCarousel(sectionId, direction) {
 
                 <div class="flex items-center justify-between">
                     <Link :href="`/m/${slug}`" class="text-sm text-zinc-400 hover:text-[var(--ma-primary)]">← Voltar ao início</Link>
-                    <Button @click="markComplete" :disabled="completed">
-                        {{ completed ? 'Concluído' : 'Marcar como concluído' }}
-                    </Button>
+                    <div class="flex items-center gap-2">
+                        <Button
+                            v-if="allLessonsCompleted && nextUnlockedModule"
+                            as-child
+                            class="bg-emerald-600 hover:bg-emerald-500"
+                        >
+                            <Link :href="`/m/${slug}/modulo/${nextUnlockedModule.id}`">
+                                Ir para o próximo módulo
+                            </Link>
+                        </Button>
+                        <Button @click="markComplete" :disabled="completed">
+                            {{ completed ? 'Concluído' : 'Marcar como concluído' }}
+                        </Button>
+                    </div>
                 </div>
 
                 <!-- Comentários da aula -->

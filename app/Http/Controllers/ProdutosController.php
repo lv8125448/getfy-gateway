@@ -335,7 +335,7 @@ class ProdutosController extends Controller
 
         $produtoArray['refund_policy_days'] = $produto->refund_policy_days !== null
             ? (int) $produto->refund_policy_days
-            : 7;
+            : null;
 
         $produtoArray['affiliate_enrollments'] = ProductAffiliateEnrollment::query()
             ->where('product_id', (string) $produto->getKey())
@@ -502,11 +502,13 @@ class ProdutosController extends Controller
             'email_template.body_html' => ['nullable', 'string', 'max:65535'],
             'deliverable_link' => ['nullable', 'string', 'url', 'max:500'],
             'base_interval' => ['nullable', 'string', 'in:weekly,monthly,quarterly,semi_annual,annual,lifetime'],
-            'refund_policy_days' => ['required', 'integer', 'in:7,14,30'],
+            'refund_policy_days' => ['nullable', 'integer', 'in:7,14,30'],
         ]);
         $validated['is_active'] = $request->boolean('is_active', true);
         $validated['currency'] = $validated['currency'] ?? config('products.currency_default', 'BRL');
-        $validated['refund_policy_days'] = (int) $validated['refund_policy_days'];
+        $validated['refund_policy_days'] = ($validated['refund_policy_days'] ?? null) !== null
+            ? (int) $validated['refund_policy_days']
+            : null;
 
         $beforeEvent = new ProductBeforeSave($produto, $validated, false);
         event($beforeEvent);

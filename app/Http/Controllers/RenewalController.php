@@ -25,7 +25,7 @@ class RenewalController extends Controller
     {
         $subscription = Subscription::with(['user', 'product', 'subscriptionPlan'])
             ->where('renewal_token', $token)
-            ->where('status', Subscription::STATUS_ACTIVE)
+            ->whereIn('status', [Subscription::STATUS_ACTIVE, Subscription::STATUS_PAST_DUE])
             ->first();
 
         if (! $subscription || $subscription->subscriptionPlan->isLifetime()) {
@@ -87,7 +87,7 @@ class RenewalController extends Controller
 
         $subscription = Subscription::with(['user', 'product', 'subscriptionPlan'])
             ->where('renewal_token', $request->input('token'))
-            ->where('status', Subscription::STATUS_ACTIVE)
+            ->whereIn('status', [Subscription::STATUS_ACTIVE, Subscription::STATUS_PAST_DUE])
             ->first();
 
         if (! $subscription || $subscription->subscriptionPlan->isLifetime()) {
@@ -244,6 +244,7 @@ class RenewalController extends Controller
             'payment_method' => 'pix',
         ]));
         $subscription->update([
+            'status' => Subscription::STATUS_ACTIVE,
             'current_period_start' => $periodStart,
             'current_period_end' => $periodEnd,
         ]);
