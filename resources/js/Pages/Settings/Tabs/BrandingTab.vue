@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
-import { router, usePage } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
 import Button from '@/components/ui/Button.vue';
 import { Upload, Trash2, Copy } from 'lucide-vue-next';
 
@@ -24,12 +24,11 @@ const form = reactive({
 const uploadField = ref(null);
 const uploading = ref(false);
 
-const page = usePage();
-
 function api(path) {
-    const base = String(page.props.app_url || '').replace(/\/$/, '');
     const p = path.startsWith('/') ? path : `/${path}`;
-    return base ? `${base}${p}` : p;
+    // Sempre same-origin: evita ERR_CONNECTION_REFUSED quando APP_URL (.env) é IP/host
+    // interno mas o painel é acessado por domínio público (ex.: Cloudflare).
+    return p;
 }
 
 const fieldLabels = {

@@ -18,15 +18,6 @@ class DockerSetupController extends Controller
         return trim($v);
     }
 
-    private function isPublicIpHost(string $host): bool
-    {
-        if (! filter_var($host, FILTER_VALIDATE_IP)) {
-            return false;
-        }
-
-        return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
-    }
-
     private function normalizeHostFromInput(string $raw, Request $request): string
     {
         $value = strtolower($this->sanitizeInputUrl($raw));
@@ -64,15 +55,11 @@ class DockerSetupController extends Controller
 
     private function normalizeAppUrlForDocker(string $host, Request $request): string
     {
-        if ($host === 'localhost' || $host === '127.0.0.1' || $host === '::1') {
-            return $this->resolveRequestScheme($request).'://'.$host;
-        }
+        // Não forçar https:// só por ser um hostname: no compose padrão só existe HTTP (ex.: :80).
+        // Se gravarmos https sem TLS na frente, o login quebra (cookies Secure + redirects) e https://domínio recusa conexão (nada na 443).
+        $scheme = $this->resolveRequestScheme($request);
 
-        if (filter_var($host, FILTER_VALIDATE_IP) && ! $this->isPublicIpHost($host)) {
-            return $this->resolveRequestScheme($request).'://'.$host;
-        }
-
-        return 'https://'.$host;
+        return $scheme.'://'.$host;
     }
 
     private function resolveRequestScheme(Request $request): string
