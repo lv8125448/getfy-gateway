@@ -1,7 +1,7 @@
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { getVideoProviderType } from '@/lib/utils';
-import { Maximize2 } from 'lucide-vue-next';
+import { Maximize2, Play, Pause, Settings } from 'lucide-vue-next';
 
 const props = defineProps({
     src: { type: String, default: '' },
@@ -24,6 +24,7 @@ const isEmbedProvider = computed(() => {
     const t = providerType.value;
     return t === 'youtube' || t === 'vimeo';
 });
+const isYoutube = computed(() => providerType.value === 'youtube' && !!props.src);
 const isMobile = ref(false);
 const isIphoneSafari = ref(false);
 let mobileMql = null;
@@ -32,6 +33,350 @@ function onMobileQueryChange(e) {
 }
 const playerRef = ref(null);
 let onFullscreenChangeHandler = null;
+
+const youtubeVideoId = computed(() => {
+    if (!props.src) return null;
+    const u = props.src.trim();
+    const m = u.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
+    return m?.[1] ?? null;
+});
+
+const hasYoutubePlaylist = computed(() => {
+    if (!props.src) return false;
+    try {
+        const u = new URL(props.src, typeof window !== 'undefined' ? window.location.origin : 'https://example.com');
+        return u.searchParams.has('list') || u.searchParams.has('playlist');
+    } catch (_) {
+        return /[?&]list=/.test(props.src);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// YouTube legacy player (IFrame API) with quality selector.
+// ---------------------------------------------------------------------------
+const youtubeMountEl = ref(null);
+let ytPlayer = null;
+let ytApiPromise = null;
+let ytApplyQualityTimer = null;
+let ytProgressTimer = null;
+let ytControlsHideTimer = null;
+
+const QUALITY_STORAGE_KEY = 'member-area-youtube-quality';
+const QUALITY_LABELS = {
+    auto: 'Auto',
+    small: '240p',
+    medium: '360p',
+    large: '480p',
+    hd720: '720p',
+    hd1080: '1080p',
+    highres: 'Alta',
+};
+
+const qualityMenuOpen = ref(false);
+const selectedQuality = ref('auto');
+const lastQualityError = ref(null);
+const ytIsPlaying = ref(false);
+const ytCurrentTime = ref(0);
+const ytDuration = ref(0);
+const ytControlsVisible = ref(true);
+const ytRootEl = ref(null);
+const ytPosterVisible = ref(true);
+const ytScrubbing = ref(false);
+const ytMaskActive = ref(false);
+let ytMaskTimer = null;
+
+const ytMaskBranding = computed(() => {
+    if (ytPosterVisible.value) return true;
+    if (ytScrubbing.value) return true;
+    return ytMaskActive.value;
+});
+
+function loadYoutubeApiOnce() {
+    if (typeof window === 'undefined') return Promise.reject(new Error('no_window'));
+    if (ytApiPromise) return ytApiPromise;
+    ytApiPromise = new Promise((resolve, reject) => {
+        if (window.YT?.Player) {
+            resolve(window.YT);
+            return;
+        }
+        const existing = document.querySelector('script[data-yt-iframe-api]');
+        if (!existing) {
+            const s = document.createElement('script');
+            s.src = 'https://www.youtube.com/iframe_api';
+            s.async = true;
+            s.defer = true;
+            s.dataset.ytIframeApi = '1';
+            s.onerror = () => reject(new Error('yt_iframe_api_load_failed'));
+            document.head.appendChild(s);
+        }
+        const prev = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = function () {
+            try {
+                if (typeof prev === 'function') prev();
+            } catch (_) {}
+            if (window.YT?.Player) resolve(window.YT);
+            else reject(new Error('yt_iframe_api_ready_but_missing'));
+        };
+    });
+    return ytApiPromise;
+}
+
+function getSavedQuality() {
+    try {
+        const q = localStorage.getItem(QUALITY_STORAGE_KEY);
+        return q && typeof q === 'string' ? q : 'auto';
+    } catch (_) {
+        return 'auto';
+    }
+}
+function saveQuality(q) {
+    try {
+        localStorage.setItem(QUALITY_STORAGE_KEY, q);
+    } catch (_) {}
+}
+
+function destroyYoutubePlayer() {
+    if (ytApplyQualityTimer) {
+        clearTimeout(ytApplyQualityTimer);
+        ytApplyQualityTimer = null;
+    }
+    if (ytProgressTimer) {
+        clearInterval(ytProgressTimer);
+        ytProgressTimer = null;
+    }
+    if (ytControlsHideTimer) {
+        clearTimeout(ytControlsHideTimer);
+        ytControlsHideTimer = null;
+    }
+    try {
+        if (ytPlayer && typeof ytPlayer.destroy === 'function') ytPlayer.destroy();
+    } catch (_) {}
+    ytPlayer = null;
+    qualityMenuOpen.value = false;
+    lastQualityError.value = null;
+    ytIsPlaying.value = false;
+    ytCurrentTime.value = 0;
+    ytDuration.value = 0;
+    ytControlsVisible.value = true;
+    ytPosterVisible.value = true;
+    ytScrubbing.value = false;
+    ytMaskActive.value = false;
+    if (ytMaskTimer) {
+        clearTimeout(ytMaskTimer);
+        ytMaskTimer = null;
+    }
+}
+
+function maskBrandingFor(ms = 450) {
+    ytMaskActive.value = true;
+    if (ytMaskTimer) clearTimeout(ytMaskTimer);
+    ytMaskTimer = setTimeout(() => {
+        ytMaskActive.value = false;
+        ytMaskTimer = null;
+    }, Math.max(0, ms));
+}
+
+function applyYoutubeQuality(q) {
+    lastQualityError.value = null;
+    if (!ytPlayer) return;
+    if (q === 'auto') {
+        // YouTube não expõe auto-select via API moderna; tentar resetar para default.
+        try {
+            if (typeof ytPlayer.setPlaybackQuality === 'function') ytPlayer.setPlaybackQuality('default');
+        } catch (_) {}
+        return;
+    }
+
+    try {
+        if (typeof ytPlayer.setPlaybackQuality === 'function') {
+            ytPlayer.setPlaybackQuality(q);
+            return;
+        }
+        if (typeof ytPlayer.setPlaybackQualityRange === 'function') {
+            ytPlayer.setPlaybackQualityRange(q);
+            return;
+        }
+        lastQualityError.value = 'quality_api_unavailable';
+    } catch (e) {
+        lastQualityError.value = 'quality_set_failed';
+    }
+}
+
+async function initYoutubePlayer() {
+    destroyYoutubePlayer();
+    if (!isYoutube.value || !youtubeVideoId.value) return;
+    await nextTick();
+    const mount = youtubeMountEl.value;
+    if (!mount) return;
+
+    selectedQuality.value = getSavedQuality();
+    await loadYoutubeApiOnce();
+    if (!window.YT?.Player) return;
+
+    const mountId = `yt-legacy-${Math.random().toString(36).slice(2, 10)}`;
+    mount.innerHTML = `<div id="${mountId}" class="yt-legacy-iframe"></div>`;
+
+    ytPlayer = new window.YT.Player(mountId, {
+        videoId: youtubeVideoId.value,
+        host: 'https://www.youtube-nocookie.com',
+        playerVars: {
+            autoplay: 0,
+            // Controls nativos exibem marca/overlays do YouTube; usamos controles próprios para manter UI limpa.
+            controls: 0,
+            playsinline: 1,
+            rel: 0,
+            modestbranding: 1,
+            iv_load_policy: 3,
+            disablekb: 1,
+            fs: 0,
+            // Evita inicializar como playlist mesmo se URL original tiver `list=...`.
+            list: undefined,
+            listType: undefined,
+        },
+        events: {
+            onReady: () => {
+                // Aplicar qualidade em diferentes momentos melhora a chance de pegar (como na antiga).
+                applyYoutubeQuality(selectedQuality.value);
+                ytApplyQualityTimer = setTimeout(() => applyYoutubeQuality(selectedQuality.value), 800);
+
+                // Iniciar polling de progresso (API não emite eventos de timeupdate).
+                ytProgressTimer = setInterval(() => {
+                    try {
+                        if (!ytPlayer) return;
+                        const d = ytPlayer.getDuration?.();
+                        if (typeof d === 'number' && d > 0) ytDuration.value = d;
+                        const t = ytPlayer.getCurrentTime?.();
+                        if (typeof t === 'number' && t >= 0) ytCurrentTime.value = t;
+                    } catch (_) {}
+                }, 350);
+            },
+            onStateChange: (e) => {
+                // PLAYING
+                if (e?.data === window.YT.PlayerState?.PLAYING) {
+                    ytIsPlaying.value = true;
+                    ytPosterVisible.value = false;
+                    scheduleHideControls();
+                    if (ytApplyQualityTimer) clearTimeout(ytApplyQualityTimer);
+                    ytApplyQualityTimer = setTimeout(() => applyYoutubeQuality(selectedQuality.value), 500);
+                }
+                if (e?.data === window.YT.PlayerState?.PAUSED) {
+                    ytIsPlaying.value = false;
+                    ytControlsVisible.value = true;
+                }
+                // ENDED
+                if (e?.data === window.YT.PlayerState?.ENDED) {
+                    ytIsPlaying.value = false;
+                    ytControlsVisible.value = true;
+                    ytPosterVisible.value = true;
+                    onEnded();
+                }
+            },
+        },
+    });
+}
+
+function setQuality(q) {
+    selectedQuality.value = q;
+    saveQuality(q);
+    qualityMenuOpen.value = false;
+    // aplicar agora e tentar novamente após um curto delay
+    applyYoutubeQuality(q);
+    if (ytApplyQualityTimer) clearTimeout(ytApplyQualityTimer);
+    ytApplyQualityTimer = setTimeout(() => applyYoutubeQuality(q), 600);
+}
+
+function togglePlay() {
+    if (!ytPlayer) return;
+    try {
+        const state = ytPlayer.getPlayerState?.();
+        if (state === window.YT?.PlayerState?.PLAYING) {
+            ytPlayer.pauseVideo?.();
+            ytIsPlaying.value = false;
+            // Pode piscar overlays do YouTube ao pausar.
+            maskBrandingFor(450);
+        } else {
+            ytPlayer.playVideo?.();
+            ytIsPlaying.value = true;
+            // Pode piscar overlays do YouTube ao dar play.
+            maskBrandingFor(450);
+        }
+    } catch (_) {}
+}
+
+const ytProgressPct = computed(() => {
+    const d = ytDuration.value || 0;
+    if (d <= 0) return 0;
+    return Math.max(0, Math.min(100, (ytCurrentTime.value / d) * 100));
+});
+
+function formatTime(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function seekToPct(pct) {
+    if (!ytPlayer) return;
+    const d = ytDuration.value || 0;
+    if (d <= 0) return;
+    const t = (Math.max(0, Math.min(100, pct)) / 100) * d;
+    try {
+        ytPlayer.seekTo?.(t, true);
+        ytCurrentTime.value = t;
+        // Mascara branding que pode piscar após seek.
+        maskBrandingFor(450);
+    } catch (_) {}
+}
+
+function onYoutubeOverlayInteract() {
+    // Mostra/fecha menu com interação no overlay (não no iframe).
+    if (qualityMenuOpen.value) {
+        qualityMenuOpen.value = false;
+    }
+}
+
+function onScrubStart() {
+    ytScrubbing.value = true;
+    showControls();
+}
+function onScrubEnd() {
+    ytScrubbing.value = false;
+    maskBrandingFor(350);
+    scheduleHideControls();
+}
+
+function scheduleHideControls() {
+    if (ytControlsHideTimer) clearTimeout(ytControlsHideTimer);
+    if (!ytIsPlaying.value) {
+        ytControlsVisible.value = true;
+        return;
+    }
+    ytControlsHideTimer = setTimeout(() => {
+        ytControlsVisible.value = false;
+    }, 2200);
+}
+
+function showControls() {
+    ytControlsVisible.value = true;
+    scheduleHideControls();
+}
+
+async function requestYoutubeFullscreen() {
+    const el = ytRootEl.value;
+    if (!el) return;
+    try {
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            if (document.exitFullscreen) await document.exitFullscreen();
+            else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+            return;
+        }
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    } catch (_) {}
+}
 
 function detectIphoneSafari() {
     if (typeof navigator === 'undefined') return false;
@@ -73,7 +418,8 @@ const vidstackSrc = computed(() => {
     const type = providerType.value;
     if (type === 'youtube') {
         const m = u.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
-        return m ? `youtube/${m[1]}` : u;
+        // YouTube embed não permite forçar qualidade via API; `vq` é best-effort para reduzir casos de começar muito baixo.
+        return m ? `youtube/${m[1]}?vq=hd1080&playsinline=1&rel=0&modestbranding=1` : u;
     }
     if (type === 'vimeo') {
         const m = u.match(/vimeo\.com\/(?:video\/)?(\d+)/);
@@ -132,9 +478,12 @@ onMounted(() => {
             watermarkPosition.value = (watermarkPosition.value + 1) % POSITIONS.length;
         }, 20000);
     }
+
+    initYoutubePlayer();
 });
 onUnmounted(() => {
     if (watermarkInterval) clearInterval(watermarkInterval);
+    destroyYoutubePlayer();
     if (typeof document !== 'undefined' && onFullscreenChangeHandler) {
         document.removeEventListener('fullscreenchange', onFullscreenChangeHandler);
         document.removeEventListener('webkitfullscreenchange', onFullscreenChangeHandler);
@@ -151,6 +500,14 @@ onUnmounted(() => {
         }
     }
 });
+
+watch(
+    () => [providerType.value, youtubeVideoId.value],
+    () => {
+        if (providerType.value === 'youtube') initYoutubePlayer();
+        else destroyYoutubePlayer();
+    }
+);
 
 const effectivePlaysinline = computed(() => {
     if (providerType.value !== 'native') return props.playsinline;
@@ -203,14 +560,101 @@ function onContextMenu(e) {
             <Maximize2 class="h-4 w-4" aria-hidden="true" />
             <span class="sr-only">Tela cheia</span>
         </button>
+        <div
+            v-if="isYoutube"
+            ref="ytRootEl"
+            class="yt-legacy-root"
+            @mousemove="showControls"
+            @touchstart.passive="showControls"
+        >
+            <div ref="youtubeMountEl" class="yt-legacy-mount" />
+            <!-- Poster/máscara: esconde thumb/logo do YouTube antes do primeiro play e durante scrub/seek -->
+            <div v-if="ytMaskBranding" class="yt-mask" aria-hidden="true">
+                <div
+                    v-if="ytPosterVisible && posterUrl"
+                    class="yt-poster"
+                    :style="{ backgroundImage: `url('${posterUrl}')` }"
+                />
+            </div>
+            <!-- Camada por cima do iframe para bloquear UI/overlays do YouTube (logo, menus, playlist). -->
+            <button
+                type="button"
+                class="yt-veil"
+                aria-label="Reproduzir/pausar vídeo"
+                @click.stop.prevent="togglePlay"
+                @pointerdown="onYoutubeOverlayInteract"
+                @touchstart.passive="onYoutubeOverlayInteract"
+            />
+
+            <!-- Barra de progresso: largura total do vídeo -->
+            <div
+                class="yt-progress-overlay"
+                :class="{ hidden: !ytControlsVisible && !ytScrubbing }"
+                @pointerdown.stop="onScrubStart"
+                @pointerup.stop="onScrubEnd"
+                @pointercancel.stop="onScrubEnd"
+                @touchend.stop="onScrubEnd"
+            >
+                <input
+                    class="yt-progress-overlay-range"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    :value="ytProgressPct"
+                    @input="seekToPct(parseFloat($event.target.value))"
+                    aria-label="Progresso do vídeo"
+                />
+            </div>
+
+            <div class="yt-legacy-controls" :class="{ hidden: !ytControlsVisible }" @pointerdown.stop>
+                <div class="yt-controlbar">
+                    <button type="button" class="yt-icon-btn" aria-label="Play/Pause" @click="togglePlay">
+                        <Pause v-if="ytIsPlaying" class="h-4 w-4" aria-hidden="true" />
+                        <Play v-else class="h-4 w-4" aria-hidden="true" />
+                    </button>
+
+                    <div class="yt-time">
+                        {{ formatTime(ytCurrentTime) }} <span class="yt-time-sep">/</span> {{ formatTime(ytDuration) }}
+                    </div>
+
+                    <button type="button" class="yt-icon-btn" aria-label="Tela cheia" @click="requestYoutubeFullscreen">
+                        <Maximize2 class="h-4 w-4" aria-hidden="true" />
+                    </button>
+
+                    <div class="yt-menu-wrap">
+                        <button type="button" class="yt-icon-btn" aria-label="Qualidade" @click="qualityMenuOpen = !qualityMenuOpen">
+                            <Settings class="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <div v-if="qualityMenuOpen" class="yt-quality-menu" role="menu" aria-label="Qualidade do vídeo">
+                            <button type="button" class="yt-quality-item" :class="{ active: selectedQuality === 'auto' }" @click="setQuality('auto')">Auto</button>
+                            <button type="button" class="yt-quality-item" :class="{ active: selectedQuality === 'medium' }" @click="setQuality('medium')">360p</button>
+                            <button type="button" class="yt-quality-item" :class="{ active: selectedQuality === 'large' }" @click="setQuality('large')">480p</button>
+                            <button type="button" class="yt-quality-item" :class="{ active: selectedQuality === 'hd720' }" @click="setQuality('hd720')">720p</button>
+                            <button type="button" class="yt-quality-item" :class="{ active: selectedQuality === 'hd1080' }" @click="setQuality('hd1080')">1080p</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="lastQualityError" class="yt-quality-error">
+                    Não foi possível aplicar esta qualidade neste dispositivo.
+                </div>
+                <div v-if="hasYoutubePlaylist" class="yt-playlist-warning">
+                    Este link do YouTube contém playlist; o player ignora a playlist.
+                </div>
+            </div>
+        </div>
+
         <media-player
-            v-if="src"
+            v-else-if="src"
             ref="playerRef"
             class="player"
             :src="vidstackSrc"
             :poster="posterUrl"
             :playsinline="effectivePlaysinline"
             :fullscreen-target="isEmbedProvider ? 'provider' : undefined"
+            load="eager"
+            preload="auto"
             crossorigin
             @vds-ended="onEnded"
             @vds-end="onEnded"
@@ -287,6 +731,162 @@ function onContextMenu(e) {
 /* Camada 1: esconder PiP para dificultar gravação */
 .player :deep(media-pip-button) {
     display: none !important;
+}
+
+.yt-legacy-root,
+.yt-legacy-mount,
+.yt-legacy-iframe {
+    width: 100%;
+    height: 100%;
+}
+.yt-legacy-root {
+    position: relative;
+}
+.yt-legacy-mount :deep(iframe) {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+.yt-mask {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #000;
+}
+.yt-poster {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0.98;
+}
+.yt-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+}
+.yt-progress-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    padding: 10px 12px;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.yt-progress-overlay.hidden {
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+}
+.yt-progress-overlay-range {
+    width: 100%;
+    height: 4px;
+    accent-color: rgba(255, 255, 255, 0.92);
+}
+.yt-legacy-controls {
+    position: absolute;
+    left: 10px;
+    bottom: 38px;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.yt-legacy-controls.hidden {
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+}
+.yt-controlbar {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: rgba(0, 0, 0, 0.55);
+    color: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(6px);
+}
+.yt-icon-btn {
+    height: 34px;
+    width: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.92);
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+.yt-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+.yt-icon-btn:active {
+    transform: scale(0.98);
+}
+.yt-time {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.86);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+}
+.yt-time-sep {
+    opacity: 0.6;
+    padding: 0 4px;
+}
+.yt-menu-wrap {
+    position: relative;
+}
+.yt-quality-menu {
+    pointer-events: auto;
+    width: 180px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(8px);
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+}
+.yt-quality-item {
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 12px;
+    line-height: 1;
+    background: transparent;
+    border: 1px solid transparent;
+}
+.yt-quality-item.active {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+.yt-quality-error {
+    pointer-events: none;
+    font-size: 11px;
+    color: rgba(255, 200, 200, 0.95);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.yt-playlist-warning {
+    pointer-events: none;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 /* Marca d'água: overlay que muda de posição */
 .watermark-overlay {

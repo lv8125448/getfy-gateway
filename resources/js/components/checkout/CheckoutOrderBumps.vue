@@ -101,7 +101,7 @@ defineExpose({
                 v-for="bump in orderBumps"
                 :key="bump.id"
                 :data-order-bump-id="bump.id"
-                class="relative overflow-hidden rounded-2xl border-2 border-dashed p-4 shadow-sm transition bg-white"
+                class="relative overflow-visible rounded-2xl border-2 border-dashed p-4 shadow-sm transition bg-white"
                 data-checkout="order-bump-card"
                 :style="orderBumpCardStyle"
             >
@@ -112,16 +112,16 @@ defineExpose({
                         class="sr-only"
                         @change="toggle(bump)"
                     />
-                    <div class="absolute right-3 top-3">
+                    <div class="pointer-events-none absolute right-4 top-0 z-10 -translate-y-1/2">
                         <span
-                            class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide"
+                            class="inline-flex rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide shadow-sm ring-2 ring-white"
                             :style="orderBumpTagStyle"
                         >
                             {{ t('checkout.oferta_especial') || 'Oferta especial' }}
                         </span>
                     </div>
                     <!-- Foto + título e descrição -->
-                    <div class="flex flex-row gap-4 pr-24">
+                    <div class="flex flex-row gap-4">
                         <div class="flex h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-gray-100 ring-2 ring-gray-100">
                             <img
                                 v-if="bump.image_url"

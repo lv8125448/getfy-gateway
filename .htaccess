@@ -15,8 +15,6 @@
     RewriteRule ^images/(.*)$ public/images/$1 [L]
 
     # PWA: garantir arquivos estáticos públicos quando document root não aponta para /public
-    RewriteRule ^manifest\.json$ public/manifest.json [L]
-    RewriteRule ^painel-sw\.js$ public/painel-sw.js [L]
     RewriteRule ^icons/(.*)$ public/icons/$1 [L]
 
     # Arquivos/diretórios existentes – não reescrever

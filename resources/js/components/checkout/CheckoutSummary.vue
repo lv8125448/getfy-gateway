@@ -98,14 +98,17 @@ function selectCurrency(code) {
             />
         </div>
         <div class="min-w-0 flex-1" data-checkout="summary-main">
-            <div class="flex items-start justify-between gap-3">
+            <div class="relative flex items-start gap-3">
                 <h1
-                    class="min-w-0 flex-1 text-xl font-bold tracking-tight text-gray-900 sm:text-2xl"
+                    class="min-w-0 flex-1 pr-0 text-xl font-bold tracking-tight text-gray-900 line-clamp-2 sm:pr-24 sm:text-2xl"
                     data-checkout="summary-title"
                 >
                     {{ product.name }}
                 </h1>
-                <div class="flex shrink-0 items-center gap-1.5" data-checkout="summary-locale-currency">
+                <div
+                    class="absolute right-0 top-[-48px] z-10 flex shrink-0 items-center gap-1.5 rounded-full bg-white/95 p-1 shadow-sm ring-2 ring-white sm:top-0 sm:-translate-y-1/2"
+                    data-checkout="summary-locale-currency"
+                >
                     <CheckoutDropdown
                         v-model:open="localeOpen"
                         :icon="Globe"

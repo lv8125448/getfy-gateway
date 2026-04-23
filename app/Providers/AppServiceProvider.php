@@ -16,6 +16,7 @@ use App\Listeners\UtmifyEventSubscriber;
 use App\Listeners\SendApiApplicationWebhookListener;
 use App\Listeners\WebhookEventSubscriber;
 use App\Support\DockerSetupState;
+use App\Services\BrandingEmailData;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -70,6 +71,8 @@ class AppServiceProvider extends ServiceProvider
         Event::subscribe(CademiEventSubscriber::class);
 
         ResetPassword::toMailUsing(function (object $notifiable, string $token) {
+            $tenantId = property_exists($notifiable, 'tenant_id') ? ($notifiable->tenant_id ?? null) : null;
+            $logoUrl = BrandingEmailData::forTenant(is_int($tenantId) ? $tenantId : null)['logo_url'] ?? null;
             $params = [
                 'token' => $token,
                 'email' => $notifiable->getEmailForPasswordReset(),
@@ -82,7 +85,7 @@ class AppServiceProvider extends ServiceProvider
             $expire = config('auth.passwords.'.config('auth.defaults.passwords').'.expire');
 
             return (new MailMessage)
-                ->markdown('notifications::email', ['logoUrl' => 'https://cdn.getfy.cloud/logo-white.png'])
+                ->markdown('notifications::email', ['logoUrl' => $logoUrl])
                 ->subject('Redefinição de senha')
                 ->greeting('Olá!')
                 ->line('Você está recebendo este e-mail porque recebemos uma solicitação de redefinição de senha da sua conta.')

@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BrandingSetting;
 use App\Models\PanelPushSubscription;
 use App\Services\MemberAreaResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class PanelPwaController extends Controller
 {
@@ -27,8 +29,11 @@ class PanelPwaController extends Controller
         $themeColor = config('getfy.pwa_theme_color');
         $themeColor = ($themeColor !== null && $themeColor !== '') ? (string) $themeColor : (string) config('getfy.theme_primary', '#0ea5e9');
 
+        $brandingVersion = $this->brandingVersionForRequest($request);
+
         $icons = [];
-        $addIconVariants = function (string $src, string $sizes) use (&$icons): void {
+        $addIconVariants = function (string $src, string $sizes) use (&$icons, $brandingVersion): void {
+            $src = $this->withVersion($src, $brandingVersion);
             $icons[] = ['src' => $src, 'sizes' => $sizes, 'type' => 'image/png', 'purpose' => 'any'];
             $icons[] = ['src' => $src, 'sizes' => $sizes, 'type' => 'image/png', 'purpose' => 'maskable'];
         };
@@ -79,6 +84,54 @@ class PanelPwaController extends Controller
             ->json($manifest)
             ->header('Content-Type', 'application/manifest+json')
             ->header('Cache-Control', 'public, max-age=0, must-revalidate');
+    }
+
+    private function withVersion(string $src, ?string $v): string
+    {
+        $src = trim($src);
+        if ($src === '' || $v === null || $v === '') {
+            return $src;
+        }
+        if (str_contains($src, 'v=')) {
+            return $src;
+        }
+        return str_contains($src, '?') ? ($src.'&v='.$v) : ($src.'?v='.$v);
+    }
+
+    private function brandingVersionForRequest(Request $request): ?string
+    {
+        try {
+            if (! Schema::hasTable('branding_settings')) {
+                return null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $user = $request->user();
+        $tenantId = $user?->tenant_id;
+        $tenantUpdatedAt = null;
+        $globalUpdatedAt = null;
+
+        if ($tenantId !== null) {
+            $tenantUpdatedAt = BrandingSetting::query()
+                ->where('tenant_id', $tenantId)
+                ->value('updated_at');
+        }
+        $globalUpdatedAt = BrandingSetting::query()
+            ->whereNull('tenant_id')
+            ->value('updated_at');
+
+        $best = $tenantUpdatedAt ?? $globalUpdatedAt;
+        if (! $best) {
+            return null;
+        }
+
+        try {
+            return (string) \Illuminate\Support\Carbon::parse($best)->getTimestamp();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     public function pushSubscribe(Request $request): JsonResponse

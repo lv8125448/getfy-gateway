@@ -74,7 +74,7 @@ const PIXEL_TABS = computed(() => [
 const TABS = [
     { id: 'geral', label: t('products.edit.tab_general', 'Geral'), icon: LayoutDashboard },
     { id: 'configuracoes', label: t('products.edit.tab_settings', 'Configurações'), icon: Settings },
-    { id: 'email', label: t('products.edit.tab_email', 'E-mail'), icon: Mail },
+    // Aba de e-mail (template de acesso): mantida no código por compatibilidade, mas ocultada do menu.
     { id: 'order_bump', label: t('products.edit.tab_order_bump', 'Order Bump'), icon: Package },
     { id: 'upsell_downsell', label: t('products.edit.tab_upsell_downsell', 'Upsell / Downsell'), icon: ArrowUpDown },
     { id: 'checkout', label: t('products.edit.tab_checkout', 'Checkout'), icon: ShoppingCart },

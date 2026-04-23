@@ -190,7 +190,7 @@ const conversionPixels = computed(() => props.conversion_pixels || {});
     >
         <CheckoutTimer :config="timerConfig" :storage-key="storageKey" :t="t" />
 
-        <div class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10" data-checkout="layout-inner">
+        <div class="mx-auto max-w-6xl px-4 pb-6 pt-10 sm:px-6 sm:pb-8 sm:pt-12 lg:pb-10 lg:pt-14" data-checkout="layout-inner">
             <!-- Flash -->
             <div
                 v-if="flash?.error"
@@ -233,7 +233,7 @@ const conversionPixels = computed(() => props.conversion_pixels || {});
                 <!-- Coluna principal -->
                 <div class="w-full lg:w-2/3" data-checkout="column-primary">
                     <div
-                        class="overflow-hidden rounded-3xl border border-white/20 bg-white/95 p-6 shadow-xl shadow-black/5 backdrop-blur sm:p-8"
+                        class="overflow-visible rounded-3xl border border-white/20 bg-white/95 p-6 shadow-xl shadow-black/5 backdrop-blur sm:p-8"
                         data-checkout="card-main"
                     >
                         <CheckoutSummary

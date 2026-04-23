@@ -140,8 +140,11 @@ class AccessEmailService
             ];
             $subject = str_replace(array_keys($replace), array_values($replace), $subject);
             $bodyHtml = str_replace(array_keys($replace), array_values($replace), $bodyHtml);
-            if (! empty($template['logo_url'])) {
-                $bodyHtml = $this->prependLogoToBody($template['logo_url'], $bodyHtml);
+            // A logo do e-mail deve sempre refletir a marca configurada no admin (branding global/tenant).
+            // Mantemos o campo de logo do template (por compatibilidade), mas priorizamos o branding.
+            $brandingLogo = BrandingEmailData::forTenant($tenantIdForMail)['logo_url'] ?? null;
+            if (is_string($brandingLogo) && $brandingLogo !== '') {
+                $bodyHtml = $this->prependLogoToBody($brandingLogo, $bodyHtml);
             }
             if ($product->type === Product::TYPE_AREA_MEMBROS
                 && $senha !== ''
@@ -389,7 +392,11 @@ class AccessEmailService
 
     private function prependLogoToBody(string $logoUrl, string $bodyHtml): string
     {
-        $img = '<div style="text-align:center;margin-bottom:20px"><img src="'.e($logoUrl).'" alt="Logo" style="max-height:60px;width:auto" /></div>';
+        // Evita duplicar caso o HTML já tenha sido prefixado por este helper.
+        if (str_contains($bodyHtml, 'data-email-logo="1"')) {
+            return $bodyHtml;
+        }
+        $img = '<div data-email-logo="1" style="text-align:center;margin-bottom:20px"><img src="'.e($logoUrl).'" alt="Logo" style="max-height:60px;width:auto" /></div>';
 
         return $img.$bodyHtml;
     }
