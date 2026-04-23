@@ -95,11 +95,9 @@ function injectMetaLibAndInit(metaEntries) {
                 metaInitedPixelIds.add(id);
             }
         });
-        const pvKey = 'px:meta_pageview_sent';
-        if (safeSessionGet(pvKey) !== '1') {
-            window.fbq('track', 'PageView');
-            safeSessionSet(pvKey, '1');
-        }
+        // Dispara a cada carga real da página (F5 = nova visualização; não deduplicar em sessionStorage
+        // senão o PageView deixa de aparecer após refresh e o pixel parece "sumir" no depurador).
+        window.fbq('track', 'PageView');
     };
 
     if (typeof window.fbq === 'function') {
@@ -409,49 +407,50 @@ function firePurchase(value, currency = 'BRL', orderId = '', isOrderBump = false
     }
 }
 
+/** Só no mesmo carregamento: evita corrida entre @ready e onMounted; não usar sessionStorage (F5 deve disparar de novo). */
+let initiateCheckoutReliableInFlight = false;
+
 defineExpose({
     fireInitiateCheckout,
     firePurchase,
     async fireInitiateCheckoutReliable(value, currency = 'BRL', checkoutKey = '', settleDelayMs = 250) {
         const key = (checkoutKey || '').trim();
-        const dedupeKey = `px:initiate_checkout:${key || location.pathname}`;
-        const inflightKey = `${dedupeKey}:inflight`;
-        if (safeSessionGet(dedupeKey) === '1') return;
-        if (safeSessionGet(inflightKey) === '1') return;
-        safeSessionSet(inflightKey, '1');
+        if (initiateCheckoutReliableInFlight) {
+            return;
+        }
+        initiateCheckoutReliableInFlight = true;
 
-        // IniciateCheckout é Meta-only; se o fbq ainda não carregou, não marcamos dedupe para poder tentar de novo.
+        // InitiateCheckout é Meta-only; se o fbq ainda não carregou, soltamos o lock para uma nova tentativa.
         const p = props.pixels || {};
         if (!p.meta?.enabled) {
-            // Se Meta não está habilitado, não há nada a disparar.
-            safeSessionSet(inflightKey, '0');
+            initiateCheckoutReliableInFlight = false;
             return;
         }
 
         const metaEntries = getMetaEntries(p);
         if (!metaEntries.length) {
-            safeSessionSet(inflightKey, '0');
+            initiateCheckoutReliableInFlight = false;
             return;
         }
 
-        // Garante que o pixel foi carregado/inicializado antes do track (senão o evento pode se perder).
-        injectMetaLibAndInit(metaEntries);
-        await waitForMeta(2600);
-        if (typeof window.fbq !== 'function') {
-            safeSessionSet(inflightKey, '0');
-            return;
-        }
-        await waitForMetaPixelInit(metaEntries, 2600);
-        if (!metaInitedPixelIds.size) {
-            safeSessionSet(inflightKey, '0');
-            return;
-        }
+        try {
+            // Garante que o pixel foi carregado/inicializado antes do track (senão o evento pode se perder).
+            injectMetaLibAndInit(metaEntries);
+            await waitForMeta(2600);
+            if (typeof window.fbq !== 'function') {
+                return;
+            }
+            await waitForMetaPixelInit(metaEntries, 2600);
+            if (!metaInitedPixelIds.size) {
+                return;
+            }
 
-        fireInitiateCheckout(value, currency, key);
-        safeSessionSet(dedupeKey, '1');
-        safeSessionSet(inflightKey, '0');
-        if (settleDelayMs > 0) {
-            await sleep(settleDelayMs);
+            fireInitiateCheckout(value, currency, key);
+            if (settleDelayMs > 0) {
+                await sleep(settleDelayMs);
+            }
+        } finally {
+            initiateCheckoutReliableInFlight = false;
         }
     },
     async firePurchaseReliable(value, currency = 'BRL', orderId = '', isOrderBump = false, triggerType = 'approved', settleDelayMs = 450) {

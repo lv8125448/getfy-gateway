@@ -187,7 +187,7 @@ async function fireInitiateCheckoutOnce() {
 }
 
 onMounted(async () => {
-    // Meta: InitiateCheckout ao abrir o checkout (dedupe no próprio componente via sessionStorage).
+    // Meta: InitiateCheckout ao abrir o checkout (evita double fire no mesmo carreg. com initiateCheckoutRequested).
     await fireInitiateCheckoutOnce();
 });
 </script>
