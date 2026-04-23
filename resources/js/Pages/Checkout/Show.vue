@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import { AlertCircle, CheckCircle2 } from 'lucide-vue-next';
 import { useCheckoutLocale } from '@/composables/useCheckoutLocale';
@@ -58,6 +58,7 @@ const props = defineProps({
 });
 
 const previewConfig = ref(null);
+const conversionPixelsRef = ref(null);
 
 function onPreviewMessage(event) {
     if (!props.checkout_builder_preview) return;
@@ -170,10 +171,29 @@ const checkoutTotalBrl = computed(() => {
 });
 
 const conversionPixels = computed(() => props.conversion_pixels || {});
+
+const checkoutTotalInCurrency = computed(() => priceInCurrency(checkoutTotalBrl.value));
+
+let initiateCheckoutRequested = false;
+async function fireInitiateCheckoutOnce() {
+    if (initiateCheckoutRequested) return;
+    initiateCheckoutRequested = true;
+    if (!conversionPixelsRef.value?.fireInitiateCheckoutReliable) return;
+    await conversionPixelsRef.value.fireInitiateCheckoutReliable(
+        checkoutTotalInCurrency.value,
+        displayCurrency.value,
+        props.product?.checkout_slug || ''
+    );
+}
+
+onMounted(async () => {
+    // Meta: InitiateCheckout ao abrir o checkout (dedupe no próprio componente via sessionStorage).
+    await fireInitiateCheckoutOnce();
+});
 </script>
 
 <template>
-    <ConversionPixels :pixels="conversionPixels" />
+    <ConversionPixels ref="conversionPixelsRef" :pixels="conversionPixels" @ready="fireInitiateCheckoutOnce" />
     <Head>
         <title>{{ pageTitle }}</title>
         <meta v-if="pageDescription" name="description" :content="pageDescription" />
@@ -283,6 +303,17 @@ const conversionPixels = computed(() => props.conversion_pixels || {});
                             :checkout-total-brl="checkoutTotalBrl"
                             @coupon-applied="onCouponApplied"
                             @coupon-cleared="onCouponCleared"
+                            @purchase-confirmed="
+                                (e) =>
+                                    conversionPixelsRef?.firePurchaseReliable?.(
+                                        e?.value ?? checkoutTotalBrl,
+                                        e?.currency ?? 'BRL',
+                                        e?.orderId ?? '',
+                                        false,
+                                        e?.triggerType ?? 'approved',
+                                        350
+                                    )
+                            "
                         />
                     </div>
                 </div>

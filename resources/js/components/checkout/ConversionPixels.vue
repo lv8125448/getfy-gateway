@@ -95,7 +95,11 @@ function injectMetaLibAndInit(metaEntries) {
                 metaInitedPixelIds.add(id);
             }
         });
-        window.fbq('track', 'PageView');
+        const pvKey = 'px:meta_pageview_sent';
+        if (safeSessionGet(pvKey) !== '1') {
+            window.fbq('track', 'PageView');
+            safeSessionSet(pvKey, '1');
+        }
     };
 
     if (typeof window.fbq === 'function') {
@@ -291,6 +295,52 @@ async function waitForTrackers(maxMs = 1200) {
     }
 }
 
+async function waitForMeta(maxMs = 1800) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < maxMs) {
+        if (typeof window.fbq === 'function') return true;
+        await sleep(60);
+    }
+    return typeof window.fbq === 'function';
+}
+
+async function waitForMetaPixelInit(metaEntries, maxMs = 2200) {
+    const ids = metaEntries.map((e) => String(e.pixel_id).trim()).filter((id) => id && isValidPixelId(id));
+    if (!ids.length) return false;
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < maxMs) {
+        if (typeof window.fbq === 'function' && ids.every((id) => metaInitedPixelIds.has(id))) return true;
+        await sleep(60);
+    }
+    return typeof window.fbq === 'function' && ids.every((id) => metaInitedPixelIds.has(id));
+}
+
+function safeSessionGet(key) {
+    try {
+        return sessionStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+function safeSessionSet(key, value) {
+    try {
+        sessionStorage.setItem(key, value);
+    } catch (_) {}
+}
+
+function safeStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+function safeStorageSet(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (_) {}
+}
+
 function normalizedPurchasePayload(value, currency = 'BRL', orderId = '') {
     const normalizedValue = Number(value);
 
@@ -299,6 +349,23 @@ function normalizedPurchasePayload(value, currency = 'BRL', orderId = '') {
         currency: typeof currency === 'string' && currency.trim() ? currency.trim().toUpperCase() : 'BRL',
         orderId: orderId ? String(orderId) : '',
     };
+}
+
+function fireInitiateCheckout(value, currency = 'BRL', checkoutKey = '') {
+    const p = props.pixels || {};
+    const { value: num, currency: normalizedCurrency } = normalizedPurchasePayload(value, currency, '');
+    const key = (checkoutKey || '').trim();
+
+    if (p.meta?.enabled && window.fbq) {
+        getMetaEntries(p).forEach((entry) => {
+            if (!entry.pixel_id) return;
+            window.fbq('track', 'InitiateCheckout', {
+                value: num,
+                currency: normalizedCurrency,
+                content_ids: key ? [key] : [],
+            });
+        });
+    }
 }
 
 function firePurchase(value, currency = 'BRL', orderId = '', isOrderBump = false, triggerType = 'approved') {
@@ -343,10 +410,57 @@ function firePurchase(value, currency = 'BRL', orderId = '', isOrderBump = false
 }
 
 defineExpose({
+    fireInitiateCheckout,
     firePurchase,
+    async fireInitiateCheckoutReliable(value, currency = 'BRL', checkoutKey = '', settleDelayMs = 250) {
+        const key = (checkoutKey || '').trim();
+        const dedupeKey = `px:initiate_checkout:${key || location.pathname}`;
+        const inflightKey = `${dedupeKey}:inflight`;
+        if (safeSessionGet(dedupeKey) === '1') return;
+        if (safeSessionGet(inflightKey) === '1') return;
+        safeSessionSet(inflightKey, '1');
+
+        // IniciateCheckout é Meta-only; se o fbq ainda não carregou, não marcamos dedupe para poder tentar de novo.
+        const p = props.pixels || {};
+        if (!p.meta?.enabled) {
+            // Se Meta não está habilitado, não há nada a disparar.
+            safeSessionSet(inflightKey, '0');
+            return;
+        }
+
+        const metaEntries = getMetaEntries(p);
+        if (!metaEntries.length) {
+            safeSessionSet(inflightKey, '0');
+            return;
+        }
+
+        // Garante que o pixel foi carregado/inicializado antes do track (senão o evento pode se perder).
+        injectMetaLibAndInit(metaEntries);
+        await waitForMeta(2600);
+        if (typeof window.fbq !== 'function') {
+            safeSessionSet(inflightKey, '0');
+            return;
+        }
+        await waitForMetaPixelInit(metaEntries, 2600);
+        if (!metaInitedPixelIds.size) {
+            safeSessionSet(inflightKey, '0');
+            return;
+        }
+
+        fireInitiateCheckout(value, currency, key);
+        safeSessionSet(dedupeKey, '1');
+        safeSessionSet(inflightKey, '0');
+        if (settleDelayMs > 0) {
+            await sleep(settleDelayMs);
+        }
+    },
     async firePurchaseReliable(value, currency = 'BRL', orderId = '', isOrderBump = false, triggerType = 'approved', settleDelayMs = 450) {
+        const oid = orderId ? String(orderId) : '';
+        const dedupeKey = oid ? `px:purchase_sent:${oid}` : '';
+        if (dedupeKey && safeStorageGet(dedupeKey) === '1') return;
         await waitForTrackers(1200);
         firePurchase(value, currency, orderId, isOrderBump, triggerType);
+        if (dedupeKey) safeStorageSet(dedupeKey, '1');
         if (settleDelayMs > 0) {
             await sleep(settleDelayMs);
         }

@@ -149,7 +149,18 @@ function appendUtmsAndAffiliate(payload) {
     return payload;
 }
 
-const emit = defineEmits(['coupon-applied', 'coupon-cleared', 'update:orderBumpIds']);
+const emit = defineEmits(['coupon-applied', 'coupon-cleared', 'update:orderBumpIds', 'purchase-confirmed']);
+
+function emitPurchaseConfirmed(orderId, triggerType = 'approved') {
+    const oid = orderId !== null && orderId !== undefined ? String(orderId) : '';
+    if (!oid) return;
+    emit('purchase-confirmed', {
+        orderId: oid,
+        value: Math.max(0, Number(props.checkoutTotalBrl) || 0),
+        currency: 'BRL',
+        triggerType,
+    });
+}
 
 const customerFields = computed(() => props.config?.customer_fields ?? { name: true, cpf: true, phone: true, coupon: false });
 const showName = computed(() => customerFields.value.name !== false);
@@ -956,6 +967,7 @@ async function initMercadopagoBrick() {
                                 const url = data.redirect_url;
                                 if (url) {
                                     cardApproved.value = true;
+                                    emitPurchaseConfirmed(data.order_id, 'approved');
                                     setTimeout(() => router.visit(url), 800);
                                 }
                                 resolve();
@@ -1288,6 +1300,7 @@ function submit() {
                         if (url) {
                             cardApproved.value = true;
                             cardApprovedRedirectUrl.value = url;
+                            emitPurchaseConfirmed(data.order_id, 'approved');
                             setTimeout(() => router.visit(url), 1800);
                         }
                     }
@@ -1414,6 +1427,7 @@ function submit() {
                     if (url && !url.replace(/\/$/, '').endsWith(window.location.origin + '/checkout')) {
                         cardApproved.value = true;
                         cardApprovedRedirectUrl.value = url;
+                        emitPurchaseConfirmed(data.order_id, 'approved');
                         setTimeout(() => router.visit(url), 800);
                         return;
                     }
@@ -1424,6 +1438,7 @@ function submit() {
                     if (url && !isPostUrl(url)) {
                         cardApproved.value = true;
                         cardApprovedRedirectUrl.value = url;
+                        emitPurchaseConfirmed(data.order_id, 'approved');
                         setTimeout(() => router.visit(url), 1800);
                         return;
                     }
@@ -1435,6 +1450,7 @@ function submit() {
                         const fallback = `/checkout/obrigado?order_id=${encodeURIComponent(String(data.order_id))}&next=login`;
                         cardApproved.value = true;
                         cardApprovedRedirectUrl.value = fallback;
+                        emitPurchaseConfirmed(data.order_id, 'approved');
                         setTimeout(() => router.visit(fallback), 800);
                         return;
                     }
@@ -1450,6 +1466,7 @@ function submit() {
                     const finalUrl = res.request.responseURL;
                     if (!finalUrl.replace(/\/$/, '').endsWith('/checkout')) {
                         cardApproved.value = true;
+                        // Não temos um order_id garantido aqui, mas quando existir no JSON acima já emitimos.
                         setTimeout(() => { window.location.href = finalUrl; }, 1200);
                         return;
                     }
