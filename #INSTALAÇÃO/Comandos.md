@@ -13,7 +13,7 @@ Importante: você precisa fazer upload dos arquivos para um novo repositorio no 
 
 Comando para Atualização:
 
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/seu-usuario/seu-repositorio/main/update.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/lv8125448/getfy-gateway/main/update.sh)"
 
 Qualquer modificação que você fizer no código, após finalizado, basta subir o repositorio para o github novamente, usando o GitHub Desktop ou pelo comando no terminal 
 git add .
